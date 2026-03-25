@@ -1,6 +1,8 @@
-# @alyibrahim/claude-statusline
+# claude-statusline
 
 A zero-dependency statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription rate limits, and session cost — updating after every response.
+
+![statusline screenshot](.github/image.png)
 
 ## Requirements
 
