@@ -227,8 +227,123 @@ fn main() {
     }
 }
 
-fn render(_input: &str) -> Option<String> {
-    Some(String::from("placeholder"))
+fn render(input: &str) -> Option<String> {
+    use std::path::PathBuf;
+
+    let data: serde_json::Value = serde_json::from_str(input).ok()?;
+
+    // Extract fields
+    let model = {
+        let m = sanitize(data["model"]["display_name"].as_str().unwrap_or(""));
+        if m.is_empty() { "Claude".to_string() } else { m }
+    };
+    let dir = {
+        let d = data["workspace"]["current_dir"].as_str().unwrap_or("").to_string();
+        if d.is_empty() {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        } else { d }
+    };
+    let session = data["session_id"].as_str().unwrap_or("").to_string();
+
+    // Context bar
+    let ctx = data["context_window"]["remaining_percentage"]
+        .as_f64()
+        .map(context_bar)
+        .unwrap_or_default();
+
+    // Claude dir
+    let claude_dir: PathBuf = std::env::var("CLAUDE_CONFIG_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| dirs_home().join(".claude"));
+
+    // Todos
+    let (task, active_agents) = scan_todos(&claude_dir, &session);
+
+    // Cost / rate limits
+    // is_subscription = rate_limits key exists (even if null/empty object)
+    let is_subscription = data.get("rate_limits").is_some();
+    let session_cost: Option<f64> = if !is_subscription {
+        data["cost"]["total_cost_usd"].as_f64()
+    } else {
+        None
+    };
+
+    let pct_5h = data["rate_limits"]["five_hour"]["used_percentage"].as_f64();
+    let pct_week = data["rate_limits"]["seven_day"]["used_percentage"].as_f64();
+    let resets_at_5h = data["rate_limits"]["five_hour"]["resets_at"].as_i64();
+
+    let reset_sfx = resets_at_5h.map(reset_suffix).unwrap_or_default();
+    let u5h = pct_5h.map(|p| usage_line("Current", p, &reset_sfx)).unwrap_or_default();
+    let u7d = pct_week.map(|p| usage_line("Weekly", p, "")).unwrap_or_default();
+
+    // Git branch
+    let branch = sanitize(&git_branch(&dir));
+
+    // Effort
+    let effort_sfx = effort_suffix(&model, &claude_dir);
+
+    // Dir display
+    let dirname = sanitize(
+        std::path::Path::new(&dir)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| dir.clone())
+            .as_str(),
+    );
+    let dir_display = if !branch.is_empty() {
+        format!("\x1b[1m\x1b[97m{}\x1b[0m\x1b[2m \x1b[36m[{}]\x1b[0m", dirname, branch)
+    } else {
+        format!("\x1b[1m\x1b[97m{}\x1b[0m", dirname)
+    };
+
+    // Cost display — note: two leading spaces is intentional, matches JS source
+    let cost_display = session_cost
+        .map(|c| format!("  \x1b[33m{}\x1b[0m", format_cost(c)))
+        .unwrap_or_default();
+
+    // Usage content: weekly first, then current (matches JS [u7d, u5h] order)
+    let usage_parts: Vec<&str> = [u7d.as_str(), u5h.as_str()]
+        .iter().copied().filter(|s| !s.is_empty()).collect();
+    let usage_content = usage_parts.join("  ");
+
+    // line2: usage before cost
+    let line2 = if !usage_content.is_empty() || !cost_display.is_empty() {
+        let parts: Vec<&str> = [usage_content.as_str(), cost_display.as_str()]
+            .iter().copied().filter(|s| !s.is_empty()).collect();
+        format!("\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m {}", parts.join("  "))
+    } else {
+        String::new()
+    };
+
+    // Agent display
+    let agent_display = if active_agents > 0 {
+        format!(" \x1b[0m\x1b[36m↪ {}\x1b[0m", active_agents)
+    } else {
+        String::new()
+    };
+
+    let model_display = format!("\x1b[0m\x1b[94m{}\x1b[0m{}{}", model, effort_sfx, agent_display);
+
+    let line1 = if !task.is_empty() {
+        format!("{} \x1b[2m│\x1b[0m \x1b[1m{}\x1b[0m \x1b[2m│\x1b[0m {}{}", model_display, task, dir_display, ctx)
+    } else {
+        format!("{} \x1b[2m│\x1b[0m {}{}", model_display, dir_display, ctx)
+    };
+
+    let sep_len = visible_len(&line1);
+    let sep = format!("\x1b[2m{}\x1b[0m", "─".repeat(sep_len));
+
+    let output = if !line2.is_empty() {
+        format!("{}\n{}\n{}", line1, sep, line2)
+    } else {
+        line1
+    };
+
+    Some(output)
 }
 
 #[cfg(test)]
@@ -504,5 +619,94 @@ mod tests {
         let (task, agents) = scan_todos(&tmp, "");
         assert_eq!(task, "");
         assert_eq!(agents, 0);
+    }
+
+    fn make_basic_input(model: &str) -> String {
+        serde_json::json!({
+            "model": {"display_name": model},
+            "workspace": {"current_dir": "/tmp/myproject"},
+            "session_id": "",
+            "context_window": {"remaining_percentage": 90.0}
+        }).to_string()
+    }
+
+    #[test]
+    fn render_returns_some_for_valid_input() {
+        assert!(render(&make_basic_input("claude-sonnet-4-6")).is_some());
+    }
+
+    #[test]
+    fn render_contains_model_name() {
+        let out = render(&make_basic_input("claude-sonnet-4-6")).unwrap();
+        assert!(out.contains("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn render_contains_dirname() {
+        let out = render(&make_basic_input("M")).unwrap();
+        assert!(out.contains("myproject"));
+    }
+
+    #[test]
+    fn render_returns_none_for_invalid_json() {
+        assert!(render("not json").is_none());
+    }
+
+    #[test]
+    fn render_defaults_model_to_claude() {
+        let input = serde_json::json!({"session_id": ""}).to_string();
+        let out = render(&input).unwrap();
+        assert!(out.contains("Claude"));
+    }
+
+    #[test]
+    fn render_shows_usage_line_for_subscription() {
+        let input = serde_json::json!({
+            "model": {"display_name": "M"},
+            "session_id": "",
+            "rate_limits": {
+                "five_hour": {"used_percentage": 30.0, "resets_at": 9999999999i64},
+                "seven_day": {"used_percentage": 20.0}
+            }
+        }).to_string();
+        let out = render(&input).unwrap();
+        assert!(out.contains("Usage"));
+        assert!(out.contains("30%"));
+    }
+
+    #[test]
+    fn render_shows_cost_for_api_key_users() {
+        let input = serde_json::json!({
+            "model": {"display_name": "M"},
+            "session_id": "",
+            "cost": {"total_cost_usd": 0.0042}
+        }).to_string();
+        let out = render(&input).unwrap();
+        assert!(out.contains("$0.0042"));
+    }
+
+    #[test]
+    fn render_no_trailing_newline() {
+        let out = render(&make_basic_input("M")).unwrap();
+        assert!(!out.ends_with('\n'));
+    }
+
+    #[test]
+    fn render_sep_length_matches_line1_visible_length() {
+        let input = serde_json::json!({
+            "model": {"display_name": "M"},
+            "session_id": "",
+            "rate_limits": {
+                "five_hour": {"used_percentage": 30.0, "resets_at": 9999999999i64},
+                "seven_day": {"used_percentage": 20.0}
+            }
+        }).to_string();
+        let out = render(&input).unwrap();
+        if out.contains('\n') {
+            let lines: Vec<&str> = out.splitn(3, '\n').collect();
+            let line1_len = visible_len(lines[0]);
+            let sep_visible = visible_len(lines[1]);
+            assert_eq!(line1_len, sep_visible);
+        }
     }
 }
