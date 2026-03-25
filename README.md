@@ -41,10 +41,11 @@ claude-statusline setup
 ## Uninstall
 
 ```bash
+claude-statusline uninstall
 npm uninstall -g @alyibrahim/claude-statusline
 ```
 
-> If using yarn/pnpm/bun, run `claude-statusline uninstall` **before** removing the package.
+> Run `claude-statusline uninstall` first regardless of package manager — this removes the statusline from `~/.claude/settings.json` before the package files are deleted.
 
 ## Notes
 
