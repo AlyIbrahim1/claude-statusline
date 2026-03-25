@@ -1,5 +1,5 @@
 {
-  "name": "@alyibrahim1/claude-statusline",
+  "name": "@alyibrahim/claude-statusline",
   "version": "1.0.0",
   "description": "A zero-dependency Claude Code statusline — reads rate limits from stdin, no API calls",
   "engines": { "node": ">=16" },

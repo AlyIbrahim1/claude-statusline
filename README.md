@@ -1,4 +1,4 @@
-# @alyibrahim1/claude-statusline
+# @alyibrahim/claude-statusline
 
 A zero-dependency statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription rate limits, and session cost — updating after every response.
 
@@ -12,7 +12,7 @@ No `jq`, `bc`, `ccusage`, or other external tools needed.
 ## Install
 
 ```bash
-npm install -g @alyibrahim1/claude-statusline
+npm install -g @alyibrahim/claude-statusline
 ```
 
 That's it. The statusline is configured automatically. Restart Claude Code to see it.
@@ -41,7 +41,7 @@ claude-statusline setup
 ## Uninstall
 
 ```bash
-npm uninstall -g @alyibrahim1/claude-statusline
+npm uninstall -g @alyibrahim/claude-statusline
 ```
 
 > If using yarn/pnpm/bun, run `claude-statusline uninstall` **before** removing the package.
