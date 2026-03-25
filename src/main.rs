@@ -75,6 +75,24 @@ fn context_bar(remaining: f64) -> String {
     }
 }
 
+fn usage_line(label: &str, pct: f64, suffix: &str) -> String {
+    let p = pct.round() as i64;
+    let color = if p < 50 { "\x1b[32m" } else if p < 75 { "\x1b[33m" } else { "\x1b[31m" };
+    format!("\x1b[0m\x1b[97m{}:\x1b[0m {}{}%\x1b[0m{}", label, color, p, suffix)
+}
+
+fn reset_suffix(resets_at: i64) -> String {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let reset_ms = resets_at * 1000;
+    let mins_left = i64::max(0, ((reset_ms - now_ms) as f64 / 60_000.0).round() as i64);
+    let h = mins_left / 60;
+    let m = mins_left % 60;
+    format!(" \x1b[2m↺ {}h{:02}m\x1b[0m", h, m)
+}
+
 fn main() {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -188,5 +206,65 @@ mod tests {
         let filled = stripped.matches('█').count();
         let empty = stripped.matches('░').count();
         assert_eq!(filled + empty, 10);
+    }
+
+    #[test]
+    fn usage_line_green_below_50() {
+        let line = usage_line("Current", 49.0, "");
+        assert!(line.contains("\x1b[32m"));
+        assert!(line.contains("49%"));
+        assert!(line.contains("Current:"));
+    }
+
+    #[test]
+    fn usage_line_yellow_50_to_74() {
+        let line = usage_line("Weekly", 74.0, "");
+        assert!(line.contains("\x1b[33m"));
+    }
+
+    #[test]
+    fn usage_line_red_at_75_plus() {
+        let line = usage_line("Current", 75.0, "");
+        assert!(line.contains("\x1b[31m"));
+    }
+
+    #[test]
+    fn usage_line_includes_suffix() {
+        let line = usage_line("Current", 50.0, " mysuffix");
+        assert!(line.ends_with(" mysuffix"));
+    }
+
+    #[test]
+    fn usage_line_rounds_pct() {
+        let line = usage_line("X", 49.6, "");
+        assert!(line.contains("50%"));
+    }
+
+    #[test]
+    fn reset_suffix_formats_correctly() {
+        let future = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64 + 90 * 60;
+        let s = reset_suffix(future);
+        assert!(s.contains("↺"));
+        assert!(s.contains("1h"));
+        assert!(s.contains("30m"));
+    }
+
+    #[test]
+    fn reset_suffix_zero_pads_minutes() {
+        let future = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64 + 65 * 60;
+        let s = reset_suffix(future);
+        assert!(s.contains("05m"));
+    }
+
+    #[test]
+    fn reset_suffix_past_returns_zero() {
+        let s = reset_suffix(0i64);
+        assert!(s.contains("0h00m"));
     }
 }
