@@ -54,6 +54,27 @@ fn visible_len(s: &str) -> usize {
     strip_sgr(s).chars().map(|c| if (c as u32) > 0xFFFF { 2 } else { 1 }).sum()
 }
 
+/// Builds the ANSI context usage bar. `remaining` is remaining_percentage from stdin.
+fn context_bar(remaining: f64) -> String {
+    const AUTO_COMPACT_BUFFER_PCT: f64 = 16.5;
+    let usable_remaining = f64::max(
+        0.0,
+        ((remaining - AUTO_COMPACT_BUFFER_PCT) / (100.0 - AUTO_COMPACT_BUFFER_PCT)) * 100.0,
+    );
+    let used = f64::max(0.0, f64::min(100.0, (100.0 - usable_remaining).round())) as u8;
+    let filled = (used / 10) as usize;
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled));
+    if used < 50 {
+        format!(" \x1b[32m{} {}%\x1b[0m", bar, used)
+    } else if used < 65 {
+        format!(" \x1b[33m{} {}%\x1b[0m", bar, used)
+    } else if used < 80 {
+        format!(" \x1b[38;5;208m{} {}%\x1b[0m", bar, used)
+    } else {
+        format!(" \x1b[5;31m💀 {} {}%\x1b[0m", bar, used)
+    }
+}
+
 fn main() {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -115,5 +136,57 @@ mod tests {
     fn visible_len_counts_emoji_as_two() {
         // 💀 is above U+FFFF — counts as 2 to match JS .length (surrogate pair)
         assert_eq!(visible_len("💀"), 2);
+    }
+
+    #[test]
+    fn context_bar_green_below_50() {
+        // remaining=80 → usable_remaining = (80-16.5)/83.5*100 = 75.99 → used = round(24.01) = 24
+        let bar = context_bar(80.0);
+        assert!(bar.contains("\x1b[32m"), "expected green for used=24");
+    }
+
+    #[test]
+    fn context_bar_yellow_50_to_64() {
+        // used=50 → usable_remaining=50 → remaining = 50*83.5/100 + 16.5 = 58.25
+        let bar = context_bar(58.25);
+        assert!(bar.contains("\x1b[33m"), "expected yellow for used=50");
+    }
+
+    #[test]
+    fn context_bar_orange_65_to_79() {
+        // used=65 → usable_remaining=35 → remaining = 35*83.5/100 + 16.5 = 45.725
+        let bar = context_bar(45.725);
+        assert!(bar.contains("\x1b[38;5;208m"), "expected orange for used=65");
+    }
+
+    #[test]
+    fn context_bar_red_skull_at_80_plus() {
+        // used=80 → usable_remaining=20 → remaining = 20*83.5/100 + 16.5 = 33.2
+        let bar = context_bar(33.2);
+        assert!(bar.contains("\x1b[5;31m"), "expected blinking red for used=80");
+        assert!(bar.contains("💀"));
+    }
+
+    #[test]
+    fn context_bar_full_at_zero_remaining() {
+        let bar = context_bar(0.0);
+        assert!(bar.contains("██████████"), "expected 10 filled segments");
+        assert!(bar.contains("100%"));
+    }
+
+    #[test]
+    fn context_bar_empty_at_full_remaining() {
+        let bar = context_bar(100.0);
+        assert!(bar.contains("░░░░░░░░░░"), "expected 10 empty segments");
+        assert!(bar.contains("0%"));
+    }
+
+    #[test]
+    fn context_bar_has_10_segments() {
+        let bar = context_bar(50.0);
+        let stripped = sanitize(&bar);
+        let filled = stripped.matches('█').count();
+        let empty = stripped.matches('░').count();
+        assert_eq!(filled + empty, 10);
     }
 }
