@@ -188,6 +188,29 @@ fn scan_todos(claude_dir: &std::path::Path, session: &str) -> (String, usize) {
     (task, active_agents)
 }
 
+/// Returns the user's home directory. Checks $HOME then $USERPROFILE (Windows).
+fn dirs_home() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
+/// Returns the current git branch name, or "" on any failure.
+fn git_branch(dir: &str) -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { Some(o.stdout) } else { None })
+        .and_then(|b| String::from_utf8(b).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
 fn main() {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
