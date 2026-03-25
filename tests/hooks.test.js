@@ -1,4 +1,4 @@
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -43,11 +43,9 @@ describe('postinstall.js', () => {
 
 describe('postinstall.js chmod behavior', () => {
   let tmpDir;
-  let exitSpy;
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-chmod-'));
-    // Mock process.exit so Jest doesn't intercept it as an error
-    exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
+    jest.spyOn(process, 'exit').mockImplementation(() => {});
     delete require.cache[require.resolve(CONFIG_PATH)];
     delete require.cache[require.resolve(POSTINSTALL_PATH)];
   });
