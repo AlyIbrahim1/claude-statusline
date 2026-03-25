@@ -93,6 +93,50 @@ fn reset_suffix(resets_at: i64) -> String {
     format!(" \x1b[2m↺ {}h{:02}m\x1b[0m", h, m)
 }
 
+fn format_cost(cost: f64) -> String {
+    if cost < 0.01 {
+        format!("${:.4}", cost)
+    } else {
+        format!("${:.2}", cost)
+    }
+}
+
+/// Pure function for testing: maps a level string to the ANSI effort suffix.
+fn effort_suffix_from_level(level: &str) -> String {
+    match level {
+        "low"    => format!(" \x1b[0m\x1b[32m[L]\x1b[0m"),
+        "medium" => format!(" \x1b[0m\x1b[33m[M]\x1b[0m"),
+        "high"   => format!(" \x1b[0m\x1b[38;5;208m[H]\x1b[0m"),
+        "max"    => format!(" \x1b[0m\x1b[31m[MAXX]\x1b[0m"),
+        _        => String::new(),
+    }
+}
+
+/// Resolves effort level from env → settings.json → model default, then formats.
+fn effort_suffix(model: &str, claude_dir: &std::path::Path) -> String {
+    use std::fs;
+
+    let raw = std::env::var("CLAUDE_CODE_EFFORT_LEVEL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let text = fs::read_to_string(claude_dir.join("settings.json")).ok()?;
+            let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+            let s = v["effortLevel"].as_str()?.to_string();
+            if s.is_empty() { None } else { Some(s) }
+        })
+        .unwrap_or_else(|| {
+            let m = model.to_lowercase();
+            if m.contains("sonnet-4") || m.contains("opus-4") {
+                "medium".to_string()
+            } else {
+                String::new()
+            }
+        });
+
+    effort_suffix_from_level(&raw.to_lowercase())
+}
+
 fn main() {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -266,5 +310,50 @@ mod tests {
     fn reset_suffix_past_returns_zero() {
         let s = reset_suffix(0i64);
         assert!(s.contains("0h00m"));
+    }
+
+    #[test]
+    fn format_cost_small_uses_4_decimals() {
+        assert_eq!(format_cost(0.0099), "$0.0099");
+    }
+
+    #[test]
+    fn format_cost_large_uses_2_decimals() {
+        assert_eq!(format_cost(0.01), "$0.01");
+        assert_eq!(format_cost(1.5), "$1.50");
+    }
+
+    #[test]
+    fn effort_suffix_low() {
+        let s = effort_suffix_from_level("low");
+        assert!(s.contains("[L]"));
+        assert!(s.contains("\x1b[32m"));
+    }
+
+    #[test]
+    fn effort_suffix_medium() {
+        let s = effort_suffix_from_level("medium");
+        assert!(s.contains("[M]"));
+        assert!(s.contains("\x1b[33m"));
+    }
+
+    #[test]
+    fn effort_suffix_high() {
+        let s = effort_suffix_from_level("high");
+        assert!(s.contains("[H]"));
+        assert!(s.contains("\x1b[38;5;208m"));
+    }
+
+    #[test]
+    fn effort_suffix_max() {
+        let s = effort_suffix_from_level("max");
+        assert!(s.contains("[MAXX]"));
+        assert!(s.contains("\x1b[31m"));
+    }
+
+    #[test]
+    fn effort_suffix_unknown_is_empty() {
+        assert_eq!(effort_suffix_from_level(""), "");
+        assert_eq!(effort_suffix_from_level("unknown"), "");
     }
 }
