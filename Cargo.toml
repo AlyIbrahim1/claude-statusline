@@ -1,0 +1,17 @@
+[package]
+name = "claude-statusline"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "statusline"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
