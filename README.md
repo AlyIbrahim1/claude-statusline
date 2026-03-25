@@ -3,16 +3,9 @@
 [![CI](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml/badge.svg)](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@alyibrahim/claude-statusline)](https://www.npmjs.com/package/@alyibrahim/claude-statusline)
 
-A zero-dependency statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription rate limits, and session cost — updating after every response.
+A zero-dependency statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription token rate limits, and session cost — updating after every response.
 
 ![statusline screenshot](.github/image.png)
-
-## Requirements
-
-- **Node.js >=16** — the only hard requirement (installed with npm)
-- **git** — optional, used for branch display; gracefully absent if not installed
-
-No `jq`, `bc`, `ccusage`, or other external tools needed.
 
 ## Install
 
@@ -26,6 +19,14 @@ That's it. The statusline is configured automatically. Restart Claude Code to se
 ```bash
 claude-statusline setup
 ```
+
+## Requirements
+
+- **Node.js >=16** — the only hard requirement (installed with npm)
+- **git** — optional, used for branch display; gracefully absent if not installed
+
+No `jq`, `bc`, `ccusage`, or other external tools needed.
+
 
 ## What it shows
 
