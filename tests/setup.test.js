@@ -87,11 +87,10 @@ describe('setup()', () => {
     const fakeBin = path.join(fakeDir, 'statusline');
     fs.writeFileSync(fakeBin, '');
 
-    const { resolveBinary } = require('../scripts/config');
     jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(fakeBin);
 
     delete require.cache[require.resolve('../scripts/setup')];
-    const result = require('../scripts/setup').setup();
+    require('../scripts/setup').setup();
 
     const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
     expect(settings.statusLine.command).toBe(`"${fakeBin}"`);

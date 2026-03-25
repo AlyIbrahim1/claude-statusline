@@ -1,8 +1,8 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { getSettingsPath, atomicWrite } = require('./config');
 const config = require('./config');
+const { getSettingsPath, atomicWrite } = config;
 
 const UNSAFE_CHARS = /["`$!()\\]/;
 
