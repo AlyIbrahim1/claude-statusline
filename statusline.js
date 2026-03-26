@@ -111,11 +111,21 @@ process.stdin.on('end', () => {
     } catch (e) {}
 
     // Output
-    const dirname = sanitize(path.basename(dir));
     const safeBranch = sanitize(branch);
+    // Build abbreviated dir: always show ~/../<basename>
+    const absDir = path.resolve(dir);
+    let dirLabel;
+    if (absDir === homeDir) {
+      dirLabel = '~';
+    } else if (path.dirname(absDir) === homeDir) {
+      dirLabel = `~/${path.basename(absDir)}`;
+    } else {
+      dirLabel = `~/${path.basename(path.dirname(absDir))}/${path.basename(absDir)}`;
+    }
+    const dirname = sanitize(dirLabel);
     // dirname is bright; branch stays cyan; surrounding prefix/suffix stay dim
     const dirDisplay = safeBranch
-      ? `\x1b[1m\x1b[97m${dirname}\x1b[0m\x1b[2m \x1b[36m[${safeBranch}]\x1b[0m`
+      ? `\x1b[1m\x1b[97m${dirname}\x1b[0m\x1b[2m \x1b[36m(${safeBranch})\x1b[0m`
       : `\x1b[1m\x1b[97m${dirname}\x1b[0m`;
     const u5h = usageLine('Current', pct5h, resetSuffix), u7d = usageLine('Weekly', pctWeek);
     const costDisplay = sessionCost !== null
