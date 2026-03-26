@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 // Read JSON from stdin
 let input = '';
@@ -104,16 +104,31 @@ process.stdin.on('end', () => {
       }
     }
 
-    // Git branch (command is a fixed string; dir is passed as cwd, not interpolated — no injection risk)
+    // Git branch + session commit counter
+    const absDir = path.resolve(dir);
     let branch = '';
+    let commitCount = 0;
     try {
       branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      const headSha = execSync('git rev-parse HEAD', { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      if (session) {
+        const sessionFile = path.join(claudeDir, `statusline-session-${session}.json`);
+        let sessionData = {};
+        try { sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf8')); } catch (e) {}
+        if (!sessionData[absDir]) {
+          sessionData[absDir] = headSha;
+          try { fs.writeFileSync(sessionFile, JSON.stringify(sessionData)); } catch (e) {}
+        }
+        const baseline = sessionData[absDir];
+        if (baseline !== headSha) {
+          const countStr = execFileSync('git', ['rev-list', '--count', `${baseline}..HEAD`], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+          commitCount = parseInt(countStr, 10) || 0;
+        }
+      }
     } catch (e) {}
 
     // Output
     const safeBranch = sanitize(branch);
-    // Build abbreviated dir: always show ~/../<basename>
-    const absDir = path.resolve(dir);
     let dirLabel;
     if (absDir === homeDir) {
       dirLabel = '~';
@@ -123,9 +138,11 @@ process.stdin.on('end', () => {
       dirLabel = `~/${path.basename(path.dirname(absDir))}/${path.basename(absDir)}`;
     }
     const dirname = sanitize(dirLabel);
-    // dirname is bright; branch stays cyan; surrounding prefix/suffix stay dim
+    // dirname is bright; branch stays cyan; commit count dim after branch
+    const commitSuffix = commitCount > 0 ? ` \x1b[32m+${commitCount}` : '';
+    const branchStr = `(${safeBranch})${commitSuffix}\x1b[0m \x1b[2m│\x1b[0m`;
     const dirDisplay = safeBranch
-      ? `\x1b[1m\x1b[97m${dirname}\x1b[0m\x1b[2m \x1b[36m(${safeBranch})\x1b[0m`
+      ? `\x1b[1m\x1b[97m${dirname}\x1b[0m\x1b[2m \x1b[36m${branchStr}\x1b[0m`
       : `\x1b[1m\x1b[97m${dirname}\x1b[0m`;
     const u5h = usageLine('Current', pct5h, resetSuffix), u7d = usageLine('Weekly', pctWeek);
     const costDisplay = sessionCost !== null
