@@ -148,9 +148,19 @@ process.stdin.on('end', () => {
     const costDisplay = sessionCost !== null
       ? `  \x1b[33m$${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}\x1b[0m`
       : '';
+    // Session token consumption (cumulative input + output across all turns)
+    const totalIn  = data.context_window?.total_input_tokens  ?? null;
+    const totalOut = data.context_window?.total_output_tokens ?? null;
+    let tokenDisplay = '';
+    if (totalIn != null || totalOut != null) {
+      const total = (totalIn ?? 0) + (totalOut ?? 0);
+      const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+      tokenDisplay = `\x1b[2m│\x1b[0m \x1b[97m${fmt(total)} tok\x1b[0m`;
+    }
+
     const usageContent = [u7d, u5h].filter(Boolean).join('  ');
-    const line2 = (usageContent || costDisplay)
-      ? `\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m ${[usageContent, costDisplay].filter(Boolean).join('  ')}`
+    const line2 = (usageContent || costDisplay || tokenDisplay)
+      ? `\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m ${[usageContent, costDisplay, tokenDisplay].filter(Boolean).join('  ')}`
       : '';
     // Effort level: read from env var first, then settings.json, then fall back to
     // model-based default (sonnet-4/opus-4 default to "medium" in Claude Code).
