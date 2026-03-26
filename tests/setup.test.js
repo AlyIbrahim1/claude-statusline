@@ -12,9 +12,11 @@ describe('setup()', () => {
     process.env.CLAUDE_CONFIG_DIR = tmpDir;
     process.env.npm_config_global = 'true';
     delete require.cache[require.resolve('../scripts/setup')];
+    jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(null);
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     if (origConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = origConfigDir;
     if (origNpmGlobal === undefined) delete process.env.npm_config_global;
