@@ -53,9 +53,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   darwin-x64:
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - name: Add target
+        run: rustup target add x86_64-apple-darwin
       - name: Build
         run: cargo build --release --target x86_64-apple-darwin
       - name: Copy binary and set version
