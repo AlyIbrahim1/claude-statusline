@@ -2,12 +2,16 @@
 
 [![CI](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml/badge.svg)](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@alyibrahim/claude-statusline)](https://www.npmjs.com/package/@alyibrahim/claude-statusline)
+[![npm downloads](https://img.shields.io/npm/dm/@alyibrahim/claude-statusline)](https://www.npmjs.com/package/@alyibrahim/claude-statusline)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A fast statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription rate limits, and session cost — updating after every response.
+**A rich, fast statusline for [Claude Code](https://claude.ai/code)** — shows model, git branch, context usage, rate limits, and session cost after every response.
 
-Runs as a compiled Rust binary on Linux x64/arm64, macOS x64/arm64, and Windows x64 — no Node.js startup overhead on every prompt. Falls back to Node.js automatically on unsupported platforms.
+Runs as a **compiled Rust binary** (~5ms startup vs ~100ms for Node.js). Zero shell dependencies. One install command.
 
-![statusline screenshot](.github/image.png)
+![statusline screenshot](https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/image.png)
+
+---
 
 ## Install
 
@@ -15,36 +19,64 @@ Runs as a compiled Rust binary on Linux x64/arm64, macOS x64/arm64, and Windows 
 npm install -g @alyibrahim/claude-statusline
 ```
 
-That's it. The statusline is configured automatically. Restart Claude Code to see it.
+Done. The statusline configures itself automatically. Restart Claude Code to see it.
 
-**Manual setup** (if auto-setup failed):
-```bash
-claude-statusline setup
-```
+> If auto-setup didn't run: `claude-statusline setup`
 
-## Requirements
+---
 
-- **Node.js >=16** — needed for install/uninstall lifecycle scripts
-- **git** — optional, used for branch display; gracefully absent if not installed
+## What you get
 
-No `jq`, `bc`, `ccusage`, or other external tools needed.
+**Line 1** — Model name · Effort level · Active subagents · Current task · Directory `[branch]` · Context bar
 
-## What it shows
+**Line 2** — Weekly token usage · 5h usage · Reset countdown *(Pro/Max)* — or — Session cost *(API key)*
 
-**Line 1:** Model · Effort level · Active agents · Current task · Directory `[git branch]` · Context bar
+| Feature | Details |
+|---|---|
+| Context bar | Normalized to usable % — accounts for the auto-compact buffer |
+| Rate limits | Shows 5h and weekly usage with color-coded thresholds |
+| Session cost | Displayed only for API key users, hidden for subscribers |
+| Active agents | Counts running subagents from your `~/.claude/todos/` directory |
+| Effort level | Reads `CLAUDE_CODE_EFFORT_LEVEL` env var or `settings.json` |
+| Git branch | Detected automatically, silently absent if not a git repo |
 
-**Line 2:** Weekly usage · 5h usage · Reset countdown *(subscription)*  or  Session cost *(API key)*
+---
+
+## Platform support
+
+The Rust binary is pre-built and installed automatically for your platform via npm `optionalDependencies`:
+
+| Platform | Package |
+|---|---|
+| Linux x64 | [`@alyibrahim/claude-statusline-linux-x64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-linux-x64) |
+| Linux arm64 | [`@alyibrahim/claude-statusline-linux-arm64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-linux-arm64) |
+| macOS x64 (Intel) | [`@alyibrahim/claude-statusline-darwin-x64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-darwin-x64) |
+| macOS arm64 (Apple Silicon) | [`@alyibrahim/claude-statusline-darwin-arm64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-darwin-arm64) |
+| Windows x64 | [`@alyibrahim/claude-statusline-win32-x64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-win32-x64) |
+
+npm picks the right one automatically. If your platform isn't listed, the JS fallback is used instead — no action needed.
+
+---
 
 ## Why this one
 
-| | This package | Others |
+| | claude-statusline | Others |
 |---|---|---|
-| Fast startup | ✓ compiled Rust binary | Node.js cold-start every prompt |
-| No dependencies | ✓ no `jq`, `bc`, etc. | Require external tools |
-| No API calls | ✓ reads stdin directly | Poll OAuth endpoint, hit rate limits |
-| Subscription vs API aware | ✓ | Show cost for everyone |
-| Context bar normalized | ✓ usable % | Raw remaining % |
-| Active agent counter | ✓ | — |
+| Startup time | ~5ms (Rust binary) | ~100ms (Node.js cold-start every prompt) |
+| Shell dependencies | None | Require `jq`, `bc`, or `ccusage` |
+| API calls | None — reads Claude's stdin directly | Poll OAuth endpoint, risk rate limits |
+| Subscription-aware | Shows usage/resets for Pro/Max, cost for API | Treat everyone as API user |
+| Context bar | Usable % after auto-compact buffer | Raw remaining % |
+| Subagent counter | Counts active agents from todos dir | — |
+
+---
+
+## Requirements
+
+- **Node.js ≥16** — for install/uninstall scripts only (not needed at runtime on supported platforms)
+- **git** — optional, enables branch display
+
+---
 
 ## Uninstall
 
@@ -53,13 +85,15 @@ claude-statusline uninstall
 npm uninstall -g @alyibrahim/claude-statusline
 ```
 
-> Run `claude-statusline uninstall` first regardless of package manager — this removes the statusline from `~/.claude/settings.json` before the package files are deleted.
+> Always run `claude-statusline uninstall` first — it removes the `statusLine` entry from `~/.claude/settings.json` before the files are deleted.
+
+---
 
 ## Notes
 
-- **Switched Node versions?** Re-run `claude-statusline setup` — only needed if the Rust binary wasn't installed (unsupported platform fallback).
-- Writes only the `statusLine` key in `~/.claude/settings.json` — all other settings are preserved.
-- Respects `$CLAUDE_CONFIG_DIR` if set.
+- Settings are written only to the `statusLine` key — all other `~/.claude/settings.json` keys are untouched
+- Respects `$CLAUDE_CONFIG_DIR` if set
+- Switched Node versions on an unsupported platform? Re-run `claude-statusline setup`
 
 ## License
 
