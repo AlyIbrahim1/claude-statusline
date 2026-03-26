@@ -26,7 +26,13 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Publish linux-x64
-        run: npm publish packages/linux-x64/ --access public
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if npm view @alyibrahim/claude-statusline-linux-x64@$VERSION version 2>/dev/null; then
+            echo "Already published, skipping"
+          else
+            npm publish packages/linux-x64/ --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -48,7 +54,13 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Publish linux-arm64
-        run: npm publish packages/linux-arm64/ --access public
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if npm view @alyibrahim/claude-statusline-linux-arm64@$VERSION version 2>/dev/null; then
+            echo "Already published, skipping"
+          else
+            npm publish packages/linux-arm64/ --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -70,7 +82,13 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Publish darwin-x64
-        run: npm publish packages/darwin-x64/ --access public
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if npm view @alyibrahim/claude-statusline-darwin-x64@$VERSION version 2>/dev/null; then
+            echo "Already published, skipping"
+          else
+            npm publish packages/darwin-x64/ --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -90,7 +108,13 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Publish darwin-arm64
-        run: npm publish packages/darwin-arm64/ --access public
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if npm view @alyibrahim/claude-statusline-darwin-arm64@$VERSION version 2>/dev/null; then
+            echo "Already published, skipping"
+          else
+            npm publish packages/darwin-arm64/ --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -114,7 +138,15 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Publish win32-x64
-        run: npm publish packages/win32-x64/ --access public
+        shell: pwsh
+        run: |
+          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          $existing = npm view "@alyibrahim/claude-statusline-win32-x64@$VERSION" version 2>$null
+          if ($existing) {
+            Write-Host "Already published, skipping"
+          } else {
+            npm publish packages/win32-x64/ --access public
+          }
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -135,6 +167,12 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Publish root package
-        run: npm publish --access public
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if npm view @alyibrahim/claude-statusline@$VERSION version 2>/dev/null; then
+            echo "Already published, skipping"
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
