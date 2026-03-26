@@ -1,0 +1,9 @@
+{
+  "name": "@alyibrahim/claude-statusline-darwin-arm64",
+  "version": "0.0.0",
+  "description": "macOS arm64 binary for @alyibrahim/claude-statusline",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["statusline"],
+  "license": "MIT"
+}

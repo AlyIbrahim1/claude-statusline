@@ -1,0 +1,9 @@
+{
+  "name": "@alyibrahim/claude-statusline-win32-x64",
+  "version": "0.0.0",
+  "description": "Windows x64 binary for @alyibrahim/claude-statusline",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["statusline.exe"],
+  "license": "MIT"
+}

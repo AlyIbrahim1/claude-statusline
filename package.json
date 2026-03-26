@@ -20,6 +20,13 @@
     "README.md"
   ],
   "license": "MIT",
+  "optionalDependencies": {
+    "@alyibrahim/claude-statusline-linux-x64": "0.0.0",
+    "@alyibrahim/claude-statusline-linux-arm64": "0.0.0",
+    "@alyibrahim/claude-statusline-darwin-x64": "0.0.0",
+    "@alyibrahim/claude-statusline-darwin-arm64": "0.0.0",
+    "@alyibrahim/claude-statusline-win32-x64": "0.0.0"
+  },
   "devDependencies": {
     "jest": "^29.0.0"
   }

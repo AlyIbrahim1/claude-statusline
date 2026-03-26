@@ -1,7 +1,10 @@
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+
+const CONFIG_PATH = path.join(__dirname, '../scripts/config');
+const POSTINSTALL_PATH = path.join(__dirname, '../scripts/postinstall');
 
 const POSTINSTALL = path.join(__dirname, '../scripts/postinstall.js');
 const PREUNINSTALL = path.join(__dirname, '../scripts/preuninstall.js');
@@ -35,6 +38,67 @@ describe('postinstall.js', () => {
     });
     expect(result.status).toBe(0);
     expect(result.stdout.toString()).toContain('✓');
+  });
+});
+
+describe('postinstall.js chmod behavior', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-chmod-'));
+    jest.spyOn(process, 'exit').mockImplementation(() => {});
+    delete require.cache[require.resolve(CONFIG_PATH)];
+    delete require.cache[require.resolve(POSTINSTALL_PATH)];
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    jest.restoreAllMocks();
+    delete require.cache[require.resolve(CONFIG_PATH)];
+    delete require.cache[require.resolve(POSTINSTALL_PATH)];
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.npm_config_global;
+  });
+
+  test('calls chmodSync with binary path and 0o755 when resolveBinary returns a path and platform is not win32', () => {
+    const fakeBinary = path.join(tmpDir, 'claude-statusline');
+    fs.writeFileSync(fakeBinary, '');
+
+    const config = require(CONFIG_PATH);
+    jest.spyOn(config, 'resolveBinary').mockReturnValue(fakeBinary);
+    const chmodSpy = jest.spyOn(fs, 'chmodSync').mockImplementation(() => {});
+
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+
+    try {
+      delete require.cache[require.resolve(POSTINSTALL_PATH)];
+      process.env.CLAUDE_CONFIG_DIR = tmpDir;
+      process.env.npm_config_global = 'true';
+      require(POSTINSTALL_PATH);
+    } finally {
+      Object.defineProperty(process, 'platform', originalPlatform || { value: 'linux', configurable: true });
+    }
+
+    expect(chmodSpy).toHaveBeenCalledWith(fakeBinary, 0o755);
+  });
+
+  test('does not call chmodSync when resolveBinary returns null', () => {
+    const config = require(CONFIG_PATH);
+    jest.spyOn(config, 'resolveBinary').mockReturnValue(null);
+    const chmodSpy = jest.spyOn(fs, 'chmodSync').mockImplementation(() => {});
+
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+
+    try {
+      delete require.cache[require.resolve(POSTINSTALL_PATH)];
+      process.env.CLAUDE_CONFIG_DIR = tmpDir;
+      process.env.npm_config_global = 'true';
+      require(POSTINSTALL_PATH);
+    } finally {
+      Object.defineProperty(process, 'platform', originalPlatform || { value: 'linux', configurable: true });
+    }
+
+    expect(chmodSpy).not.toHaveBeenCalled();
   });
 });
 

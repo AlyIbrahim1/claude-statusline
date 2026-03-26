@@ -1,7 +1,8 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { getSettingsPath, atomicWrite } = require('./config');
+const config = require('./config');
+const { getSettingsPath, atomicWrite } = config;
 
 const UNSAFE_CHARS = /["`$!()\\]/;
 
@@ -30,7 +31,11 @@ function setup({ force = false } = {}) {
     }
   }
 
-  const command = `"${process.execPath}" "${scriptPath}"`;
+  const binaryPath = config.resolveBinary();
+  const safeBinary = binaryPath && !UNSAFE_CHARS.test(binaryPath) ? binaryPath : null;
+  const command = safeBinary
+    ? `"${safeBinary}"`
+    : `"${process.execPath}" "${scriptPath}"`;
   settings.statusLine = { type: 'command', command };
 
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });

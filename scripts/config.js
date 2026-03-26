@@ -23,4 +23,21 @@ function atomicWrite(filePath, obj) {
   }
 }
 
-module.exports = { getSettingsPath, atomicWrite };
+/**
+ * Resolves the path to the platform-specific binary, or returns null if not found.
+ * @returns {string|null}
+ */
+function resolveBinary() {
+  const platformKey = `${process.platform}-${process.arch}`;
+  const pkgName = `@alyibrahim/claude-statusline-${platformKey}`;
+  const binName = process.platform === 'win32' ? 'statusline.exe' : 'statusline';
+  let binaryPath = null;
+  try {
+    const pkgJson = require.resolve(`${pkgName}/package.json`);
+    const candidate = path.join(path.dirname(pkgJson), binName);
+    if (fs.existsSync(candidate)) binaryPath = candidate;
+  } catch (e) {}
+  return binaryPath;
+}
+
+module.exports = { getSettingsPath, atomicWrite, resolveBinary };

@@ -3,7 +3,9 @@
 [![CI](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml/badge.svg)](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@alyibrahim/claude-statusline)](https://www.npmjs.com/package/@alyibrahim/claude-statusline)
 
-A zero-dependency statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription token rate limits, and session cost — updating after every response.
+A fast statusline for [Claude Code](https://claude.ai/code). Shows model, git branch, context usage, subscription rate limits, and session cost — updating after every response.
+
+Runs as a compiled Rust binary on Linux x64/arm64, macOS x64/arm64, and Windows x64 — no Node.js startup overhead on every prompt. Falls back to Node.js automatically on unsupported platforms.
 
 ![statusline screenshot](.github/image.png)
 
@@ -22,11 +24,10 @@ claude-statusline setup
 
 ## Requirements
 
-- **Node.js >=16** — the only hard requirement (installed with npm)
+- **Node.js >=16** — needed for install/uninstall lifecycle scripts
 - **git** — optional, used for branch display; gracefully absent if not installed
 
 No `jq`, `bc`, `ccusage`, or other external tools needed.
-
 
 ## What it shows
 
@@ -38,7 +39,8 @@ No `jq`, `bc`, `ccusage`, or other external tools needed.
 
 | | This package | Others |
 |---|---|---|
-| Zero dependencies | ✓ no `jq`, `bc`, etc. | Require external tools |
+| Fast startup | ✓ compiled Rust binary | Node.js cold-start every prompt |
+| No dependencies | ✓ no `jq`, `bc`, etc. | Require external tools |
 | No API calls | ✓ reads stdin directly | Poll OAuth endpoint, hit rate limits |
 | Subscription vs API aware | ✓ | Show cost for everyone |
 | Context bar normalized | ✓ usable % | Raw remaining % |
@@ -55,7 +57,7 @@ npm uninstall -g @alyibrahim/claude-statusline
 
 ## Notes
 
-- **Switched Node versions?** Re-run `claude-statusline setup` — the Node path is baked in at install time.
+- **Switched Node versions?** Re-run `claude-statusline setup` — only needed if the Rust binary wasn't installed (unsupported platform fallback).
 - Writes only the `statusLine` key in `~/.claude/settings.json` — all other settings are preserved.
 - Respects `$CLAUDE_CONFIG_DIR` if set.
 

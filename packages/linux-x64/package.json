@@ -1,0 +1,9 @@
+{
+  "name": "@alyibrahim/claude-statusline-linux-x64",
+  "version": "0.0.0",
+  "description": "Linux x64 binary for @alyibrahim/claude-statusline",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["statusline"],
+  "license": "MIT"
+}

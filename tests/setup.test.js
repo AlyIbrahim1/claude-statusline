@@ -81,4 +81,33 @@ describe('setup()', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/invalid JSON/i);
   });
+
+  test('uses binary path when platform package is installed', () => {
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sl-setup-binary-'));
+    const fakeBin = path.join(fakeDir, 'statusline');
+    fs.writeFileSync(fakeBin, '');
+
+    jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(fakeBin);
+
+    delete require.cache[require.resolve('../scripts/setup')];
+    require('../scripts/setup').setup();
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.statusLine.command).toBe(`"${fakeBin}"`);
+
+    jest.restoreAllMocks();
+    fs.rmSync(fakeDir, { recursive: true });
+  });
+
+  test('falls back to node scriptPath when no binary found', () => {
+    jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(null);
+
+    delete require.cache[require.resolve('../scripts/setup')];
+    require('../scripts/setup').setup();
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.statusLine.command).toMatch(/node.*statusline\.js/);
+
+    jest.restoreAllMocks();
+  });
 });

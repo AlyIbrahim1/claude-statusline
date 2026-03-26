@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add target
+        run: rustup target add x86_64-unknown-linux-gnu
+      - name: Run tests
+        run: cargo test
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Copy binary and set version
+        run: |
+          cp target/x86_64-unknown-linux-gnu/release/statusline packages/linux-x64/statusline
+          VERSION=${GITHUB_REF_NAME#v}
+          cd packages/linux-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish linux-x64
+        run: npm publish packages/linux-x64/ --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  linux-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Build
+        run: cross build --release --target aarch64-unknown-linux-gnu
+      - name: Copy binary and set version
+        run: |
+          cp target/aarch64-unknown-linux-gnu/release/statusline packages/linux-arm64/statusline
+          VERSION=${GITHUB_REF_NAME#v}
+          cd packages/linux-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish linux-arm64
+        run: npm publish packages/linux-arm64/ --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  darwin-x64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release --target x86_64-apple-darwin
+      - name: Copy binary and set version
+        run: |
+          cp target/x86_64-apple-darwin/release/statusline packages/darwin-x64/statusline
+          VERSION=${GITHUB_REF_NAME#v}
+          cd packages/darwin-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish darwin-x64
+        run: npm publish packages/darwin-x64/ --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  darwin-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release --target aarch64-apple-darwin
+      - name: Copy binary and set version
+        run: |
+          cp target/aarch64-apple-darwin/release/statusline packages/darwin-arm64/statusline
+          VERSION=${GITHUB_REF_NAME#v}
+          cd packages/darwin-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish darwin-arm64
+        run: npm publish packages/darwin-arm64/ --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  win32-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: cargo test
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: Copy binary and set version
+        shell: pwsh
+        run: |
+          Copy-Item target/x86_64-pc-windows-msvc/release/statusline.exe packages/win32-x64/statusline.exe
+          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          Set-Location packages/win32-x64
+          npm version $VERSION --no-git-tag-version --allow-same-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish win32-x64
+        run: npm publish packages/win32-x64/ --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-root:
+    needs: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set versions
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          npm version $VERSION --no-git-tag-version --allow-same-version
+          for pkg in packages/linux-x64 packages/linux-arm64 packages/darwin-x64 packages/darwin-arm64 packages/win32-x64; do
+            cd $pkg && npm version $VERSION --no-git-tag-version --allow-same-version && cd -
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish root package
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
