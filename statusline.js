@@ -7,6 +7,57 @@ const path = require('path');
 const os = require('os');
 const { execSync, execFileSync } = require('child_process');
 
+// Reads cumulative token totals from the session JSONL file, using a byte-offset
+// cache so only new bytes are parsed on each invocation (O(new bytes) not O(file)).
+// Returns { totalIn, totalOut } or null on any error.
+function readSessionTokens(claudeDir, session, absDir) {
+  if (!session) return null;
+  const slug = absDir.replace(/\//g, '-');
+  const jsonlPath = path.join(claudeDir, 'projects', slug, `${session}.jsonl`);
+  const cachePath = path.join(claudeDir, `statusline-tokcache-${session}.json`);
+  try {
+    const fileSize = fs.statSync(jsonlPath).size;
+    let totalIn = 0, totalOut = 0, cachedOffset = 0;
+    try {
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      totalIn = cached.totalIn || 0;
+      totalOut = cached.totalOut || 0;
+      cachedOffset = Math.min(cached.offset || 0, fileSize);
+    } catch (e) {}
+    if (fileSize > cachedOffset) {
+      const fd = fs.openSync(jsonlPath, 'r');
+      const buf = Buffer.alloc(fileSize - cachedOffset);
+      const bytesRead = fs.readSync(fd, buf, 0, buf.length, cachedOffset);
+      fs.closeSync(fd);
+      const content = buf.subarray(0, bytesRead).toString('utf8');
+      // Exclude the last element: it's either an empty string (content ends with \n)
+      // or a potentially incomplete line (file was mid-write).
+      const safeLines = content.split('\n').slice(0, -1);
+      for (const line of safeLines) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.type === 'assistant' && entry.message?.usage) {
+            const u = entry.message.usage;
+            totalIn  += (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+            totalOut += (u.output_tokens || 0);
+          }
+        } catch (e) {}
+      }
+      // Advance offset by the bytes of all complete lines (each terminated by \n)
+      const processed = safeLines.join('\n') + '\n';
+      try {
+        fs.writeFileSync(cachePath, JSON.stringify({
+          totalIn, totalOut, offset: cachedOffset + Buffer.from(processed, 'utf8').length,
+        }));
+      } catch (e) {}
+    }
+    return { totalIn, totalOut };
+  } catch (e) {
+    return null;
+  }
+}
+
 // Read JSON from stdin
 let input = '';
 // Timeout guard: if stdin doesn't close within 3s (e.g. pipe issues on
@@ -148,11 +199,15 @@ process.stdin.on('end', () => {
     const costDisplay = sessionCost !== null
       ? `  \x1b[33m$${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}\x1b[0m`
       : '';
-    // Session token consumption (cumulative input + output across all turns)
-    const totalIn  = data.context_window?.total_input_tokens  ?? null;
-    const totalOut = data.context_window?.total_output_tokens ?? null;
+    // Session token consumption — prefer JSONL-sourced totals (accurate through
+    // the last completed tool use) over the stdin snapshot (only updated at turn start).
+    const stdinIn   = data.context_window?.total_input_tokens  ?? null;
+    const stdinOut  = data.context_window?.total_output_tokens ?? null;
+    const jsonlTok  = readSessionTokens(claudeDir, session, absDir);
+    const totalIn   = jsonlTok && jsonlTok.totalIn  > (stdinIn  ?? 0) ? jsonlTok.totalIn  : stdinIn;
+    const totalOut  = jsonlTok && jsonlTok.totalOut > (stdinOut ?? 0) ? jsonlTok.totalOut : stdinOut;
     let tokenDisplay = '';
-    if (totalIn != null || totalOut != null) {
+    if (totalIn != null || totalOut != null || jsonlTok) {
       const total = (totalIn ?? 0) + (totalOut ?? 0);
       const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
       tokenDisplay = `\x1b[2m│\x1b[0m \x1b[97m${fmt(total)} tok\x1b[0m`;
