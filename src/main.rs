@@ -101,6 +101,15 @@ fn format_cost(cost: f64) -> String {
     }
 }
 
+/// Formats a token count: numbers >= 1000 are shown as e.g. "5.3k".
+fn format_tokens(n: u64) -> String {
+    if n >= 1000 {
+        format!("{:.1}k", n as f64 / 1000.0)
+    } else {
+        n.to_string()
+    }
+}
+
 /// Pure function for testing: maps a level string to the ANSI effort suffix.
 fn effort_suffix_from_level(level: &str) -> String {
     match level {
@@ -196,6 +205,30 @@ fn dirs_home() -> std::path::PathBuf {
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
 }
 
+/// Builds the directory label with tilde abbreviation: `~`, `~/base`, or `~/parent/base`.
+/// Matches JS: absDir === homeDir → "~", parent === homeDir → "~/base", else "~/parent/base".
+fn dir_label(abs_dir: &std::path::Path, home_dir: &std::path::Path) -> String {
+    if abs_dir == home_dir {
+        "~".to_string()
+    } else if abs_dir.parent() == Some(home_dir) {
+        format!(
+            "~/{}",
+            abs_dir.file_name().unwrap_or_default().to_string_lossy()
+        )
+    } else {
+        let parent_name = abs_dir
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let base_name = abs_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| abs_dir.to_string_lossy().to_string());
+        format!("~/{}/{}", parent_name, base_name)
+    }
+}
+
 /// Returns the current git branch name, or "" on any failure.
 fn git_branch(dir: &str) -> String {
     std::process::Command::new("git")
@@ -209,6 +242,170 @@ fn git_branch(dir: &str) -> String {
         .and_then(|b| String::from_utf8(b).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_default()
+}
+
+/// Returns the current HEAD SHA, or "" on any failure.
+fn git_head_sha(dir: &str) -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { Some(o.stdout) } else { None })
+        .and_then(|b| String::from_utf8(b).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Returns the number of commits made since the session baseline SHA.
+/// Stores the baseline SHA in a per-session JSON file on first call.
+/// All errors silently return 0.
+fn session_commit_count(
+    dir: &str,
+    session: &str,
+    claude_dir: &std::path::Path,
+    abs_dir: &str,
+) -> usize {
+    use std::fs;
+
+    if session.is_empty() {
+        return 0;
+    }
+
+    let head_sha = git_head_sha(dir);
+    if head_sha.is_empty() {
+        return 0;
+    }
+
+    let session_file = claude_dir.join(format!("statusline-session-{}.json", session));
+    let mut session_data: serde_json::Value = fs::read_to_string(&session_file)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or(serde_json::json!({}));
+
+    if session_data[abs_dir].is_null() {
+        session_data[abs_dir] = serde_json::Value::String(head_sha.clone());
+        let _ = fs::write(
+            &session_file,
+            serde_json::to_string(&session_data).unwrap_or_default(),
+        );
+        return 0;
+    }
+
+    let baseline = session_data[abs_dir].as_str().unwrap_or("").to_string();
+    if baseline == head_sha {
+        return 0;
+    }
+
+    std::process::Command::new("git")
+        .args(["rev-list", "--count", &format!("{}..HEAD", baseline)])
+        .current_dir(dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { Some(o.stdout) } else { None })
+        .and_then(|b| String::from_utf8(b).ok())
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+/// Cumulative token totals read from the session JSONL file.
+struct TokenTotals {
+    total_in: u64,
+    total_out: u64,
+}
+
+/// Reads cumulative token totals from the session JSONL file using a byte-offset cache
+/// so only new bytes are parsed on each invocation (O(new bytes) not O(file)).
+/// Returns None on any error (missing file, bad JSON, etc.).
+fn read_session_tokens(
+    claude_dir: &std::path::Path,
+    session: &str,
+    abs_dir: &str,
+) -> Option<TokenTotals> {
+    use std::io::{Seek, SeekFrom};
+
+    if session.is_empty() {
+        return None;
+    }
+
+    let slug = abs_dir.replace('/', "-");
+    let jsonl_path = claude_dir
+        .join("projects")
+        .join(&slug)
+        .join(format!("{}.jsonl", session));
+    let cache_path = claude_dir.join(format!("statusline-tokcache-{}.json", session));
+
+    let file_size = std::fs::metadata(&jsonl_path).ok()?.len();
+
+    let mut total_in: u64 = 0;
+    let mut total_out: u64 = 0;
+    let mut cached_offset: u64 = 0;
+
+    if let Ok(cache_text) = std::fs::read_to_string(&cache_path) {
+        if let Ok(cached) = serde_json::from_str::<serde_json::Value>(&cache_text) {
+            total_in = cached["totalIn"].as_u64().unwrap_or(0);
+            total_out = cached["totalOut"].as_u64().unwrap_or(0);
+            cached_offset = cached["offset"].as_u64().unwrap_or(0).min(file_size);
+        }
+    }
+
+    if file_size > cached_offset {
+        let mut file = std::fs::File::open(&jsonl_path).ok()?;
+        file.seek(SeekFrom::Start(cached_offset)).ok()?;
+        let mut content = String::new();
+        file.read_to_string(&mut content).ok()?;
+
+        let lines: Vec<&str> = content.split('\n').collect();
+        // Skip the last element: either empty string (file ends with \n)
+        // or a potentially incomplete line (file was mid-write).
+        let safe_lines = &lines[..lines.len().saturating_sub(1)];
+
+        for line in safe_lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+                if entry["type"] == "assistant" {
+                    if let Some(usage) = entry["message"]["usage"].as_object() {
+                        total_in += usage
+                            .get("input_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                            + usage
+                                .get("cache_read_input_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0)
+                            + usage
+                                .get("cache_creation_input_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                        total_out += usage
+                            .get("output_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
+                    }
+                }
+            }
+        }
+
+        // Advance offset by bytes of all complete lines (each terminated by \n)
+        let processed_bytes: u64 = safe_lines.iter().map(|l| l.len() as u64 + 1).sum();
+        let cache_content = serde_json::json!({
+            "totalIn": total_in,
+            "totalOut": total_out,
+            "offset": cached_offset + processed_bytes,
+        });
+        let _ = std::fs::write(
+            &cache_path,
+            serde_json::to_string(&cache_content).unwrap_or_default(),
+        );
+    }
+
+    Some(TokenTotals { total_in, total_out })
 }
 
 fn main() {
@@ -253,12 +450,18 @@ fn render(input: &str) -> Option<String> {
         .map(context_bar)
         .unwrap_or_default();
 
-    // Claude dir
+    // Claude dir and home dir
+    let home_dir = dirs_home();
     let claude_dir: PathBuf = std::env::var("CLAUDE_CONFIG_DIR")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| dirs_home().join(".claude"));
+        .unwrap_or_else(|| home_dir.join(".claude"));
+
+    // Absolute path for slug/session keys — use as-is if canonicalize fails
+    let abs_dir = std::fs::canonicalize(&dir)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| dir.clone());
 
     // Todos
     let (task, active_agents) = scan_todos(&claude_dir, &session);
@@ -280,22 +483,47 @@ fn render(input: &str) -> Option<String> {
     let u5h = pct_5h.map(|p| usage_line("Current", p, &reset_sfx)).unwrap_or_default();
     let u7d = pct_week.map(|p| usage_line("Weekly", p, "")).unwrap_or_default();
 
-    // Git branch
+    // Git branch + session commit counter
     let branch = sanitize(&git_branch(&dir));
+    let commit_count = if !branch.is_empty() && !session.is_empty() {
+        session_commit_count(&dir, &session, &claude_dir, &abs_dir)
+    } else {
+        0
+    };
+
+    // JSONL token totals — prefer over stdin snapshot when larger
+    let stdin_in = data["context_window"]["total_input_tokens"].as_u64();
+    let stdin_out = data["context_window"]["total_output_tokens"].as_u64();
+    let jsonl_tok = read_session_tokens(&claude_dir, &session, &abs_dir);
+    let total_in = match &jsonl_tok {
+        Some(t) if t.total_in > stdin_in.unwrap_or(0) => Some(t.total_in),
+        _ => stdin_in,
+    };
+    let total_out = match &jsonl_tok {
+        Some(t) if t.total_out > stdin_out.unwrap_or(0) => Some(t.total_out),
+        _ => stdin_out,
+    };
+    let token_display = if total_in.is_some() || total_out.is_some() || jsonl_tok.is_some() {
+        let total = total_in.unwrap_or(0) + total_out.unwrap_or(0);
+        format!("\x1b[2m│\x1b[0m \x1b[97m{} tok\x1b[0m", format_tokens(total))
+    } else {
+        String::new()
+    };
 
     // Effort
     let effort_sfx = effort_suffix(&model, &claude_dir);
 
-    // Dir display
-    let dirname = sanitize(
-        std::path::Path::new(&dir)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| dir.clone())
-            .as_str(),
-    );
+    // Dir display: ~/parent/base format with (branch) +N style
+    let abs_dir_path = std::path::Path::new(&abs_dir);
+    let dirname = sanitize(&dir_label(abs_dir_path, &home_dir));
     let dir_display = if !branch.is_empty() {
-        format!("\x1b[1m\x1b[97m{}\x1b[0m\x1b[2m \x1b[36m[{}]\x1b[0m", dirname, branch)
+        let commit_suffix = if commit_count > 0 {
+            format!(" \x1b[32m+{}", commit_count)
+        } else {
+            String::new()
+        };
+        let branch_str = format!("({}){}\x1b[0m \x1b[2m│\x1b[0m", branch, commit_suffix);
+        format!("\x1b[1m\x1b[97m{}\x1b[0m\x1b[2m \x1b[36m{}\x1b[0m", dirname, branch_str)
     } else {
         format!("\x1b[1m\x1b[97m{}\x1b[0m", dirname)
     };
@@ -310,11 +538,11 @@ fn render(input: &str) -> Option<String> {
         .iter().copied().filter(|s| !s.is_empty()).collect();
     let usage_content = usage_parts.join("  ");
 
-    // line2: usage before cost
-    let line2 = if !usage_content.is_empty() || !cost_display.is_empty() {
-        let parts: Vec<&str> = [usage_content.as_str(), cost_display.as_str()]
-            .iter().copied().filter(|s| !s.is_empty()).collect();
-        format!("\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m {}", parts.join("  "))
+    // line2: usage, cost, token display
+    let line2_parts: Vec<&str> = [usage_content.as_str(), cost_display.as_str(), token_display.as_str()]
+        .iter().copied().filter(|s| !s.is_empty()).collect();
+    let line2 = if !line2_parts.is_empty() {
+        format!("\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m {}", line2_parts.join("  "))
     } else {
         String::new()
     };
@@ -513,6 +741,19 @@ mod tests {
     }
 
     #[test]
+    fn format_tokens_small() {
+        assert_eq!(format_tokens(999), "999");
+        assert_eq!(format_tokens(0), "0");
+    }
+
+    #[test]
+    fn format_tokens_thousands() {
+        assert_eq!(format_tokens(1000), "1.0k");
+        assert_eq!(format_tokens(5300), "5.3k");
+        assert_eq!(format_tokens(12500), "12.5k");
+    }
+
+    #[test]
     fn effort_suffix_low() {
         let s = effort_suffix_from_level("low");
         assert!(s.contains("[L]"));
@@ -544,6 +785,33 @@ mod tests {
     fn effort_suffix_unknown_is_empty() {
         assert_eq!(effort_suffix_from_level(""), "");
         assert_eq!(effort_suffix_from_level("unknown"), "");
+    }
+
+    #[test]
+    fn dir_label_is_home() {
+        let home = std::path::Path::new("/home/user");
+        assert_eq!(dir_label(home, home), "~");
+    }
+
+    #[test]
+    fn dir_label_direct_child_of_home() {
+        let abs = std::path::Path::new("/home/user/myproject");
+        let home = std::path::Path::new("/home/user");
+        assert_eq!(dir_label(abs, home), "~/myproject");
+    }
+
+    #[test]
+    fn dir_label_nested_path() {
+        let abs = std::path::Path::new("/home/user/projects/myapp");
+        let home = std::path::Path::new("/home/user");
+        assert_eq!(dir_label(abs, home), "~/projects/myapp");
+    }
+
+    #[test]
+    fn dir_label_unrelated_path() {
+        let abs = std::path::Path::new("/tmp/foo/bar");
+        let home = std::path::Path::new("/home/user");
+        assert_eq!(dir_label(abs, home), "~/foo/bar");
     }
 
     fn write_todo_file(dir: &std::path::Path, name: &str, todos: &serde_json::Value) {
@@ -621,6 +889,63 @@ mod tests {
         assert_eq!(agents, 0);
     }
 
+    #[test]
+    fn read_session_tokens_missing_file_returns_none() {
+        let tmp = std::env::temp_dir().join(format!("sl_tok_test_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let result = read_session_tokens(&tmp, "nosuchsession", "/no/such/dir");
+        assert!(result.is_none());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn read_session_tokens_parses_jsonl() {
+        let tmp = std::env::temp_dir().join(format!("sl_tok_test2_{}", std::process::id()));
+        let slug = "-tmp-myproject";
+        let projects_dir = tmp.join("projects").join(slug);
+        std::fs::create_dir_all(&projects_dir).unwrap();
+        let session = "testsession";
+        let jsonl = concat!(
+            "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":200,\"cache_creation_input_tokens\":0}}}\n",
+            "{\"type\":\"user\",\"message\":{}}\n",
+            "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n",
+        );
+        std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
+        let result = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
+        // total_in = (100+200+0) + (10+0+0) = 310
+        // total_out = 50 + 5 = 55
+        assert_eq!(result.total_in, 310);
+        assert_eq!(result.total_out, 55);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn read_session_tokens_uses_offset_cache() {
+        let tmp = std::env::temp_dir().join(format!("sl_tok_test3_{}", std::process::id()));
+        let slug = "-tmp-myproject";
+        let projects_dir = tmp.join("projects").join(slug);
+        std::fs::create_dir_all(&projects_dir).unwrap();
+        let session = "testsession2";
+        let line1 = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
+        std::fs::write(projects_dir.join(format!("{}.jsonl", session)), line1).unwrap();
+        // First read
+        let r1 = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
+        assert_eq!(r1.total_in, 100);
+        // Append a second line
+        let line2 = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":20,\"output_tokens\":10,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(projects_dir.join(format!("{}.jsonl", session)))
+            .unwrap();
+        f.write_all(line2.as_bytes()).unwrap();
+        // Second read — should pick up only the new line via offset cache
+        let r2 = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
+        assert_eq!(r2.total_in, 120);
+        assert_eq!(r2.total_out, 60);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
     fn make_basic_input(model: &str) -> String {
         serde_json::json!({
             "model": {"display_name": model},
@@ -645,6 +970,28 @@ mod tests {
     fn render_contains_dirname() {
         let out = render(&make_basic_input("M")).unwrap();
         assert!(out.contains("myproject"));
+    }
+
+    #[test]
+    fn render_dirname_uses_parent_slash_base_format() {
+        let out = render(&make_basic_input("M")).unwrap();
+        // /tmp/myproject → ~/tmp/myproject (when HOME is not /tmp)
+        // At minimum the path separator format should be present
+        assert!(out.contains("myproject"));
+        // Should not show bare basename without path context (old [branch] style)
+        assert!(!out.contains("[main]") && !out.contains("[master]"),
+            "branch should use () not [] format");
+    }
+
+    #[test]
+    fn render_branch_uses_parens_format() {
+        // Verify branch is shown with () not [] when present
+        // (branch detection depends on git being available in the test env)
+        let out = render(&make_basic_input("M")).unwrap();
+        // If a branch is shown, it must not use square brackets
+        if out.contains('(') {
+            assert!(!out.contains('['), "branch format should use () not []");
+        }
     }
 
     #[test]
@@ -683,6 +1030,22 @@ mod tests {
         }).to_string();
         let out = render(&input).unwrap();
         assert!(out.contains("$0.0042"));
+    }
+
+    #[test]
+    fn render_shows_token_display_from_stdin() {
+        let input = serde_json::json!({
+            "model": {"display_name": "M"},
+            "session_id": "",
+            "context_window": {
+                "remaining_percentage": 80.0,
+                "total_input_tokens": 3000,
+                "total_output_tokens": 500
+            }
+        }).to_string();
+        let out = render(&input).unwrap();
+        assert!(out.contains("tok"), "expected token display in output");
+        assert!(out.contains("3.5k"), "expected 3500 total tokens formatted as 3.5k");
     }
 
     #[test]

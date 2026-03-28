@@ -1,6 +1,6 @@
 {
   "name": "@alyibrahim/claude-statusline",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "A zero-dependency Claude Code statusline — reads rate limits from stdin, no API calls",
   "engines": {
     "node": ">=16"
@@ -21,11 +21,11 @@
   ],
   "license": "MIT",
   "optionalDependencies": {
-    "@alyibrahim/claude-statusline-linux-x64": "1.1.0",
-    "@alyibrahim/claude-statusline-linux-arm64": "1.1.0",
-    "@alyibrahim/claude-statusline-darwin-x64": "1.1.0",
-    "@alyibrahim/claude-statusline-darwin-arm64": "1.1.0",
-    "@alyibrahim/claude-statusline-win32-x64": "1.1.0"
+    "@alyibrahim/claude-statusline-linux-x64": "1.2.0",
+    "@alyibrahim/claude-statusline-linux-arm64": "1.2.0",
+    "@alyibrahim/claude-statusline-darwin-x64": "1.2.0",
+    "@alyibrahim/claude-statusline-darwin-arm64": "1.2.0",
+    "@alyibrahim/claude-statusline-win32-x64": "1.2.0"
   },
   "devDependencies": {
     "jest": "^29.0.0"
