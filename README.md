@@ -4,7 +4,7 @@
 [![npm](https://img.shields.io/npm/v/@alyibrahim/claude-statusline)](https://www.npmjs.com/package/@alyibrahim/claude-statusline)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**A rich, fast statusline for [Claude Code](https://claude.ai/code)** — shows model, git branch, context usage, rate limits, and session cost after every response.
+**A rich, fast statusline for [Claude Code](https://claude.ai/code)** — shows model, git branch, context usage, rate limits, session cost, and real-time token consumption after every response.
 
 Runs as a **compiled Rust binary** (~5ms startup vs ~100ms for Node.js). Zero shell dependencies. One install command.
 
@@ -26,18 +26,21 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 ## What you get
 
-**Line 1** — Model name · Effort level · Active subagents · Current task · Directory `[branch]` · Context bar
+**Line 1** — Model name · Effort level · Active subagents · Current task · Directory `(branch +commits)` · Context bar
 
-**Line 2** — Weekly token usage · 5h usage · Reset countdown *(Pro/Max)* — or — Session cost *(API key)*
+**Line 2** — Weekly token usage · 5h usage · Reset countdown *(Pro/Max)* — or — Session cost *(API key)* · Session token count
 
 | Feature | Details |
 |---|---|
 | Context bar | Normalized to usable % — accounts for the auto-compact buffer |
 | Rate limits | Shows 5h and weekly usage with color-coded thresholds |
 | Session cost | Displayed only for API key users, hidden for subscribers |
+| Session tokens | Real-time token consumption via JSONL offset caching — updates between turns, not just at turn start |
 | Active agents | Counts running subagents from your `~/.claude/todos/` directory |
 | Effort level | Reads `CLAUDE_CODE_EFFORT_LEVEL` env var or `settings.json` |
 | Git branch | Detected automatically, silently absent if not a git repo |
+| Session commits | Shows `+N` next to the branch for commits made during the current session |
+| Directory label | Displays as `~/parent/dir` so you always know which project you're in |
 
 ---
 
@@ -67,6 +70,8 @@ npm picks the right one automatically. If your platform isn't listed, the JS fal
 | Subscription-aware | Shows usage/resets for Pro/Max, cost for API | Treat everyone as API user |
 | Context bar | Usable % after auto-compact buffer | Raw remaining % |
 | Subagent counter | Counts active agents from todos dir | — |
+| Session tokens | Real-time via JSONL offset cache | Stale stdin snapshot or none |
+| Session commits | Tracks git commits made this session | — |
 
 ---
 
