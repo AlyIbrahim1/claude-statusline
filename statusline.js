@@ -208,7 +208,9 @@ process.stdin.on('end', () => {
     const totalOut  = jsonlTok && jsonlTok.totalOut > (stdinOut ?? 0) ? jsonlTok.totalOut : stdinOut;
     let tokenDisplay = '';
     if (totalIn != null || totalOut != null || jsonlTok) {
-      const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+      const fmt = n => n >= 1_000_000 ? (n % 1_000_000 === 0 ? `${n / 1_000_000}M` : `${(n / 1_000_000).toFixed(1)}M`)
+                     : n >= 1000     ? `${(n / 1000).toFixed(1)}k`
+                     : String(n);
       tokenDisplay = `\x1b[2m│\x1b[0m \x1b[97m${fmt(totalIn ?? 0)}↓ ${fmt(totalOut ?? 0)}↑\x1b[0m`;
     }
 

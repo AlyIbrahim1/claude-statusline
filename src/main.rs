@@ -101,9 +101,16 @@ fn format_cost(cost: f64) -> String {
     }
 }
 
-/// Formats a token count: numbers >= 1000 are shown as e.g. "5.3k".
+/// Formats a token count: >= 1_000_000 → "1M"/"1.1M", >= 1000 → "5.3k", else plain number.
 fn format_tokens(n: u64) -> String {
-    if n >= 1000 {
+    if n >= 1_000_000 {
+        let m = n as f64 / 1_000_000.0;
+        if n % 1_000_000 == 0 {
+            format!("{}M", n / 1_000_000)
+        } else {
+            format!("{:.1}M", m)
+        }
+    } else if n >= 1000 {
         format!("{:.1}k", n as f64 / 1000.0)
     } else {
         n.to_string()
@@ -752,6 +759,14 @@ mod tests {
         assert_eq!(format_tokens(1000), "1.0k");
         assert_eq!(format_tokens(5300), "5.3k");
         assert_eq!(format_tokens(12500), "12.5k");
+    }
+
+    #[test]
+    fn format_tokens_millions() {
+        assert_eq!(format_tokens(1_000_000), "1M");
+        assert_eq!(format_tokens(1_100_000), "1.1M");
+        assert_eq!(format_tokens(10_500_000), "10.5M");
+        assert_eq!(format_tokens(2_000_000), "2M");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
   "name": "@alyibrahim/claude-statusline",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Rich statusline for Claude Code — model, context bar, real-time token tracking, git branch, rate limits, and session stats. Rust binary, ~5ms startup.",
   "keywords": [
     "claude",
@@ -47,11 +47,11 @@
   ],
   "license": "MIT",
   "optionalDependencies": {
-    "@alyibrahim/claude-statusline-linux-x64": "1.3.0",
-    "@alyibrahim/claude-statusline-linux-arm64": "1.3.0",
-    "@alyibrahim/claude-statusline-darwin-x64": "1.3.0",
-    "@alyibrahim/claude-statusline-darwin-arm64": "1.3.0",
-    "@alyibrahim/claude-statusline-win32-x64": "1.3.0"
+    "@alyibrahim/claude-statusline-linux-x64": "1.3.1",
+    "@alyibrahim/claude-statusline-linux-arm64": "1.3.1",
+    "@alyibrahim/claude-statusline-darwin-x64": "1.3.1",
+    "@alyibrahim/claude-statusline-darwin-arm64": "1.3.1",
+    "@alyibrahim/claude-statusline-win32-x64": "1.3.1"
   },
   "devDependencies": {
     "jest": "^29.0.0"
