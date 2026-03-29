@@ -5,3 +5,5 @@ CLAUDE.md
 .worktrees/
 target/
 Cargo.lock
+internal docs/
+.vscode/
