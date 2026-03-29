@@ -7,6 +7,21 @@ const path = require('path');
 const os = require('os');
 const { execSync, execFileSync } = require('child_process');
 
+const cmd = process.argv[2];
+if (cmd === 'history') {
+  require('./scripts/history').handleHistory();
+  return;
+} else if (cmd === 'hook') {
+  const hookcmd = process.argv[3];
+  if (hookcmd === 'start') {
+    require('./scripts/history').handleHookStart();
+    return;
+  } else if (hookcmd === 'end') {
+    require('./scripts/history').handleHookEnd();
+    return;
+  }
+}
+
 // Reads cumulative token totals from the session JSONL file, using a byte-offset
 // cache so only new bytes are parsed on each invocation (O(new bytes) not O(file)).
 // Returns { totalIn, totalOut } or null on any error.

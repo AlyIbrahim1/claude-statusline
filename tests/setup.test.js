@@ -112,4 +112,69 @@ describe('setup()', () => {
 
     jest.restoreAllMocks();
   });
+
+  test('setup adds SessionStart and SessionEnd hooks', () => {
+    const result = load()();
+    const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
+    expect(settings.hooks?.SessionStart?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionEnd?.[0]?.command).toContain('hook end');
+  });
+});
+
+describe('toggleHistory()', () => {
+  let tmpDir, origConfigDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-history-'));
+    origConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = tmpDir;
+    delete require.cache[require.resolve('../scripts/setup')];
+    jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (origConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = origConfigDir;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const load = () => require('../scripts/setup').toggleHistory;
+
+  test('enable adds SessionStart and SessionEnd hooks', () => {
+    const result = load()(true);
+    expect(result.ok).toBe(true);
+    const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
+    expect(settings.hooks?.SessionStart?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionEnd?.[0]?.command).toContain('hook end');
+  });
+
+  test('disable removes SessionStart and SessionEnd hooks', () => {
+    load()(true);
+    const result = load()(false);
+    expect(result.ok).toBe(true);
+    const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
+    expect(settings.hooks).toBeUndefined();
+  });
+
+  test('disable preserves unrelated hooks', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      hooks: {
+        PreToolUse: [{ type: 'command', command: 'echo pre' }],
+        SessionStart: [{ type: 'command', command: 'old hook start' }]
+      }
+    }, null, 2));
+    load()(false);
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks?.PreToolUse).toBeDefined();
+    expect(written.hooks?.SessionStart).toBeUndefined();
+  });
+
+  test('returns error on invalid JSON', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), '{ bad }');
+    const result = load()(true);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/invalid JSON/i);
+  });
 });

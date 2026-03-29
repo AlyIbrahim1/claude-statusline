@@ -49,4 +49,20 @@ describe('uninstall()', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/invalid JSON/i);
   });
+
+  test('removes hooks from settings.json', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      statusLine: { type: 'command', command: 'node /some/path.js' },
+      hooks: {
+        SessionStart: [{ type: 'command', command: 'statusline hook start' }],
+        SessionEnd: [{ type: 'command', command: 'statusline hook end' }]
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks).toBeUndefined();
+    expect(written.model).toBe('sonnet');
+  });
 });

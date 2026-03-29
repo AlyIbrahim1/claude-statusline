@@ -1,3 +1,5 @@
+mod history;
+
 use std::io::Read;
 use std::sync::mpsc;
 use std::thread;
@@ -416,6 +418,22 @@ fn read_session_tokens(
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 2 {
+        if args[1] == "history" {
+            history::handle_history();
+            return;
+        } else if args[1] == "hook" && args.len() >= 3 {
+            if args[2] == "start" {
+                history::handle_hook_start();
+                return;
+            } else if args[2] == "end" {
+                history::handle_hook_end();
+                return;
+            }
+        }
+    }
+
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let mut input = String::new();

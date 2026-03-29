@@ -13,8 +13,13 @@ function uninstall() {
     return { ok: false, error: 'settings.json contains invalid JSON — cannot safely modify.' };
   }
 
-  if (!settings.statusLine) return { ok: true };
-  delete settings.statusLine;
+  if (settings.statusLine) {
+    delete settings.statusLine;
+  }
+
+  // Also strip our hooks if they exist
+  const { updateHooks } = require('./setup');
+  updateHooks(settings, '', false);
 
   try {
     atomicWrite(settingsPath, settings);

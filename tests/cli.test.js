@@ -59,4 +59,22 @@ describe('cli.js', () => {
     expect(r.status).toBe(1);
     expect(r.stderr.toString()).toContain('invalid JSON');
   });
+
+  test('enable-history: exits 0 and adds SessionStart/SessionEnd hooks', () => {
+    const r = run(['enable-history']);
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toContain('✓');
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.hooks?.SessionStart?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionEnd?.[0]?.command).toContain('hook end');
+  });
+
+  test('disable-history: exits 0 and removes hooks', () => {
+    run(['enable-history']);
+    const r = run(['disable-history']);
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toContain('✓');
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.hooks).toBeUndefined();
+  });
 });

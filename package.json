@@ -39,6 +39,9 @@
     "preuninstall": "node scripts/preuninstall.js",
     "test": "jest"
   },
+  "jest": {
+    "testPathIgnorePatterns": ["/node_modules/", "/.worktrees/"]
+  },
   "files": [
     "statusline.js",
     "bin/",
@@ -46,7 +49,11 @@
     "README.md"
   ],
   "license": "MIT",
+  "dependencies": {
+    "open": "^10.1.0"
+  },
   "optionalDependencies": {
+    "better-sqlite3": "^11.3.0",
     "@alyibrahim/claude-statusline-linux-x64": "1.3.1",
     "@alyibrahim/claude-statusline-linux-arm64": "1.3.1",
     "@alyibrahim/claude-statusline-darwin-x64": "1.3.1",

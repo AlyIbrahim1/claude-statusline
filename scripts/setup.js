@@ -38,6 +38,8 @@ function setup({ force = false } = {}) {
     : `"${process.execPath}" "${scriptPath}"`;
   settings.statusLine = { type: 'command', command };
 
+  updateHooks(settings, command, true);
+
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
 
   try {
@@ -49,4 +51,58 @@ function setup({ force = false } = {}) {
   return { ok: true, settingsPath };
 }
 
-module.exports = { setup };
+function updateHooks(settings, command, enable) {
+  if (!settings.hooks) settings.hooks = {};
+  
+  const startCmd = `${command} hook start`;
+  const endCmd = `${command} hook end`;
+
+  function toggleHook(hookName, cmdString) {
+    if (!settings.hooks[hookName]) settings.hooks[hookName] = [];
+    settings.hooks[hookName] = settings.hooks[hookName].filter(h => 
+      !(h.command && (h.command.includes('hook start') || h.command.includes('hook end')))
+    );
+    if (enable) {
+      settings.hooks[hookName].push({ type: 'command', command: cmdString });
+    }
+    if (settings.hooks[hookName].length === 0) {
+      delete settings.hooks[hookName];
+    }
+  }
+
+  toggleHook('SessionStart', startCmd);
+  toggleHook('SessionEnd', endCmd);
+
+  if (Object.keys(settings.hooks).length === 0) {
+    delete settings.hooks;
+  }
+}
+
+function toggleHistory(enable) {
+  const scriptPath = path.resolve(__dirname, '../statusline.js');
+  const binaryPath = config.resolveBinary();
+  const safeBinary = binaryPath && !UNSAFE_CHARS.test(binaryPath) ? binaryPath : null;
+  const command = safeBinary ? `"${safeBinary}"` : `"${process.execPath}" "${scriptPath}"`;
+
+  const settingsPath = getSettingsPath();
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    } catch (e) {
+      return { ok: false, error: 'settings.json contains invalid JSON — fix manually then re-run.' };
+    }
+  }
+
+  updateHooks(settings, command, enable);
+
+  try {
+    atomicWrite(settingsPath, settings);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+
+  return { ok: true, settingsPath };
+}
+
+module.exports = { setup, toggleHistory, updateHooks };
