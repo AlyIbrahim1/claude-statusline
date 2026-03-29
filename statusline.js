@@ -39,7 +39,7 @@ function readSessionTokens(claudeDir, session, absDir) {
           const entry = JSON.parse(line);
           if (entry.type === 'assistant' && entry.message?.usage) {
             const u = entry.message.usage;
-            totalIn  += (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+            totalIn  += (u.input_tokens || 0) + Math.round((u.cache_read_input_tokens || 0) * 0.1) + (u.cache_creation_input_tokens || 0);
             totalOut += (u.output_tokens || 0);
           }
         } catch (e) {}
@@ -208,9 +208,8 @@ process.stdin.on('end', () => {
     const totalOut  = jsonlTok && jsonlTok.totalOut > (stdinOut ?? 0) ? jsonlTok.totalOut : stdinOut;
     let tokenDisplay = '';
     if (totalIn != null || totalOut != null || jsonlTok) {
-      const total = (totalIn ?? 0) + (totalOut ?? 0);
       const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-      tokenDisplay = `\x1b[2m│\x1b[0m \x1b[97m${fmt(total)} tok\x1b[0m`;
+      tokenDisplay = `\x1b[2m│\x1b[0m \x1b[97m${fmt(totalIn ?? 0)}↓ ${fmt(totalOut ?? 0)}↑\x1b[0m`;
     }
 
     const usageContent = [u7d, u5h].filter(Boolean).join('  ');

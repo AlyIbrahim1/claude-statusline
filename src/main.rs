@@ -375,10 +375,10 @@ fn read_session_tokens(
                             .get("input_tokens")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0)
-                            + usage
+                            + (usage
                                 .get("cache_read_input_tokens")
                                 .and_then(|v| v.as_u64())
-                                .unwrap_or(0)
+                                .unwrap_or(0) / 10)
                             + usage
                                 .get("cache_creation_input_tokens")
                                 .and_then(|v| v.as_u64())
@@ -504,8 +504,9 @@ fn render(input: &str) -> Option<String> {
         _ => stdin_out,
     };
     let token_display = if total_in.is_some() || total_out.is_some() || jsonl_tok.is_some() {
-        let total = total_in.unwrap_or(0) + total_out.unwrap_or(0);
-        format!("\x1b[2m│\x1b[0m \x1b[97m{} tok\x1b[0m", format_tokens(total))
+        let t_in = total_in.unwrap_or(0);
+        let t_out = total_out.unwrap_or(0);
+        format!("\x1b[2m│\x1b[0m \x1b[97m{}↓ {}↑\x1b[0m", format_tokens(t_in), format_tokens(t_out))
     } else {
         String::new()
     };
@@ -912,9 +913,9 @@ mod tests {
         );
         std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
         let result = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
-        // total_in = (100+200+0) + (10+0+0) = 310
+        // total_in = (100 + 200/10 + 0) + (10 + 0 + 0) = 130
         // total_out = 50 + 5 = 55
-        assert_eq!(result.total_in, 310);
+        assert_eq!(result.total_in, 130);
         assert_eq!(result.total_out, 55);
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1044,8 +1045,9 @@ mod tests {
             }
         }).to_string();
         let out = render(&input).unwrap();
-        assert!(out.contains("tok"), "expected token display in output");
-        assert!(out.contains("3.5k"), "expected 3500 total tokens formatted as 3.5k");
+        assert!(out.contains("↓"), "expected input token display down arrow");
+        assert!(out.contains("↑"), "expected output token display up arrow");
+        assert!(out.contains("3.0k↓ 500↑"), "expected separated tokens");
     }
 
     #[test]
