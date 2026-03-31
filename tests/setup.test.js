@@ -116,8 +116,8 @@ describe('setup()', () => {
   test('setup adds SessionStart and SessionEnd hooks', () => {
     const result = load()();
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
-    expect(settings.hooks?.SessionStart?.[0]?.command).toContain('hook start');
-    expect(settings.hooks?.SessionEnd?.[0]?.command).toContain('hook end');
+    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
   });
 });
 
@@ -145,8 +145,8 @@ describe('toggleHistory()', () => {
     const result = load()(true);
     expect(result.ok).toBe(true);
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
-    expect(settings.hooks?.SessionStart?.[0]?.command).toContain('hook start');
-    expect(settings.hooks?.SessionEnd?.[0]?.command).toContain('hook end');
+    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
   });
 
   test('disable removes SessionStart and SessionEnd hooks', () => {
@@ -162,7 +162,7 @@ describe('toggleHistory()', () => {
     fs.writeFileSync(settingsPath, JSON.stringify({
       hooks: {
         PreToolUse: [{ type: 'command', command: 'echo pre' }],
-        SessionStart: [{ type: 'command', command: 'old hook start' }]
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: 'old hook start' }] }]
       }
     }, null, 2));
     load()(false);

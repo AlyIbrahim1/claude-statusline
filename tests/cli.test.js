@@ -65,8 +65,8 @@ describe('cli.js', () => {
     expect(r.status).toBe(0);
     expect(r.stdout.toString()).toContain('✓');
     const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
-    expect(settings.hooks?.SessionStart?.[0]?.command).toContain('hook start');
-    expect(settings.hooks?.SessionEnd?.[0]?.command).toContain('hook end');
+    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
   });
 
   test('disable-history: exits 0 and removes hooks', () => {
