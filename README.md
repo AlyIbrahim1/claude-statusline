@@ -1,3 +1,5 @@
+<div align="center">
+
 # claude-statusline
 
 [![CI](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml/badge.svg)](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml)
@@ -8,11 +10,17 @@
 
 Runs as a **compiled Rust binary** (~5ms startup vs ~100ms for Node.js). Zero shell dependencies. One install command.
 
-![statusline screenshot](https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/image.png)
+![statusline screenshot](https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/assets/statusline.png)
+
+</div>
 
 ---
 
+<div align="center">
+
 ## Install
+
+</div>
 
 ```bash
 npm install -g @alyibrahim/claude-statusline
@@ -24,7 +32,11 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 ---
 
+<div align="center">
+
 ## What you get
+
+</div>
 
 **Line 1** — Model name · Effort level · Active subagents · Current task · Directory `(branch +commits)` · Context bar
 
@@ -44,23 +56,56 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 ---
 
-## Platform support
+<div align="center">
 
-The Rust binary is pre-built and installed automatically for your platform via npm `optionalDependencies`:
+## Session History
 
-| Platform | Package |
+</div>
+
+Track token usage, cost, and duration across every Claude Code session with a built-in SQLite database and analytics dashboard.
+
+![history dashboard](https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/assets/history-dashboard.png)
+
+Session history is **enabled by default** on setup. Each session records:
+
+| Field | Details |
 |---|---|
-| Linux x64 | [`@alyibrahim/claude-statusline-linux-x64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-linux-x64) |
-| Linux arm64 | [`@alyibrahim/claude-statusline-linux-arm64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-linux-arm64) |
-| macOS x64 (Intel) | [`@alyibrahim/claude-statusline-darwin-x64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-darwin-x64) |
-| macOS arm64 (Apple Silicon) | [`@alyibrahim/claude-statusline-darwin-arm64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-darwin-arm64) |
-| Windows x64 | [`@alyibrahim/claude-statusline-win32-x64`](https://www.npmjs.com/package/@alyibrahim/claude-statusline-win32-x64) |
+| Project | Directory name and path |
+| Model | Which Claude model was used |
+| Tokens | Input and output counts |
+| Cost | USD cost (API key users) |
+| Duration | Session length in seconds |
+| Exit reason | How the session ended |
 
-npm picks the right one automatically. If your platform isn't listed, the JS fallback is used instead — no action needed.
+**Commands:**
+
+```bash
+claude-statusline history          # Open the analytics dashboard
+claude-statusline enable-history   # Enable session tracking
+claude-statusline disable-history  # Disable session tracking
+```
+
+Data is stored at `~/.claude/statusline-history.db`. The dashboard opens in your browser and supports project filtering and light/dark theme toggle.
 
 ---
 
+<div align="center">
+
+## Platform support
+
+</div>
+
+Pre-built Rust binaries are available for **Linux x64/arm64, macOS x64/arm64, and Windows x64**. All Linux distributions (Ubuntu, Arch, Fedora, etc.) are supported. Any other platform falls back to the JS implementation automatically — no action needed.
+
+See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform install instructions, and feature availability table.
+
+---
+
+<div align="center">
+
 ## Why this one
+
+</div>
 
 | | claude-statusline | Others |
 |---|---|---|
@@ -72,17 +117,26 @@ npm picks the right one automatically. If your platform isn't listed, the JS fal
 | Subagent counter | Counts active agents from todos dir | — |
 | Session tokens | Real-time via JSONL offset cache, split I/O (`X↓ Y↑`) | Stale stdin snapshot or none |
 | Session commits | Tracks git commits made this session | — |
+| Session history | SQLite analytics dashboard with per-project filtering | — |
 
 ---
 
+<div align="center">
+
 ## Requirements
+
+</div>
 
 - **Node.js ≥16** — for install/uninstall scripts only (not needed at runtime on supported platforms)
 - **git** — optional, enables branch display
 
 ---
 
+<div align="center">
+
 ## Uninstall
+
+</div>
 
 ```bash
 claude-statusline uninstall
@@ -93,12 +147,20 @@ npm uninstall -g @alyibrahim/claude-statusline
 
 ---
 
+<div align="center">
+
 ## Notes
+
+</div>
 
 - Settings are written only to the `statusLine` key — all other `~/.claude/settings.json` keys are untouched
 - Respects `$CLAUDE_CONFIG_DIR` if set
 - Switched Node versions on an unsupported platform? Re-run `claude-statusline setup`
 
+<div align="center">
+
 ## License
 
 MIT
+
+</div>
