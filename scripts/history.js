@@ -1,50 +1,57 @@
+'use strict';
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const open = require('open');
 
-// Returns undefined if better-sqlite3 is not available
-function getDb() {
+const JSONL_PATH = path.join(
+  process.env.HOME || process.env.USERPROFILE || os.homedir(),
+  '.claude',
+  'statusline-history.jsonl'
+);
+
+function now() {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function readSessions() {
+  if (!fs.existsSync(JSONL_PATH)) return [];
   try {
-    const Database = require('better-sqlite3');
-    const home = process.env.HOME || process.env.USERPROFILE || '.';
-    const dbDir = path.join(home, '.claude');
-    fs.mkdirSync(dbDir, { recursive: true });
-    
-    const db = new Database(path.join(dbDir, 'statusline-history.db'));
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT UNIQUE NOT NULL,
-        project_dir TEXT NOT NULL,
-        project_name TEXT NOT NULL,
-        model TEXT NOT NULL,
-        start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-        end_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-        tokens_in INTEGER DEFAULT 0,
-        tokens_out INTEGER DEFAULT 0,
-        cost_usd REAL DEFAULT 0.0,
-        duration_seconds INTEGER DEFAULT 0,
-        exit_reason TEXT 
-      )
-    `);
-    return db;
+    return fs.readFileSync(JSONL_PATH, 'utf8')
+      .split('\n')
+      .filter(l => l.trim())
+      .map(l => JSON.parse(l));
   } catch (e) {
-    return null;
+    return [];
   }
 }
 
-function handleHookStart() {
-  const db = getDb();
-  if (!db) return; // Silent fallback
+function writeSessions(sessions) {
+  const tmp = JSONL_PATH + '.tmp';
+  fs.mkdirSync(path.dirname(JSONL_PATH), { recursive: true });
+  fs.writeFileSync(tmp, sessions.map(s => JSON.stringify(s)).join('\n') + '\n');
+  fs.renameSync(tmp, JSONL_PATH);
+}
 
+function handleHookStart() {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const projectName = path.basename(projectDir);
-  const tempSessionId = `pending-${projectName}-${Date.now()}`;
-
+  const session = {
+    session_id:       `pending-${projectName}-${Date.now()}`,
+    project_dir:      projectDir,
+    project_name:     projectName,
+    model:            'pending',
+    start_time:       now(),
+    end_time:         now(),
+    tokens_in:        0,
+    tokens_out:       0,
+    cost_usd:         0,
+    duration_seconds: 0,
+    exit_reason:      'pending',
+  };
   try {
-    const stmt = db.prepare('INSERT INTO sessions (session_id, project_dir, project_name, model, exit_reason) VALUES (?, ?, ?, ?, ?)');
-    stmt.run(tempSessionId, projectDir, projectName, 'pending', 'pending');
+    fs.mkdirSync(path.dirname(JSONL_PATH), { recursive: true });
+    fs.appendFileSync(JSONL_PATH, JSON.stringify(session) + '\n');
   } catch (e) {}
 }
 
@@ -53,91 +60,89 @@ function handleHookEnd() {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', chunk => input += chunk);
   process.stdin.on('end', () => {
-    const db = getDb();
-    if (!db) return process.exit(0);
-
     let reason = 'unknown';
-    try {
-      const data = JSON.parse(input);
-      reason = data.reason || 'unknown';
-    } catch(e) {}
+    try { reason = JSON.parse(input).reason || 'unknown'; } catch (e) {}
 
     const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const home = process.env.HOME || process.env.USERPROFILE || '.';
-    const slug = projectDir.replace(/[\/\\]/g, '-');
+    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const slug = projectDir.replace(/[/\\]/g, '-');
     const projectsDir = path.join(home, '.claude', 'projects', slug);
 
-    let newestFile = null;
-    let newestTime = 0;
+    // Read session stats from the most recently modified JSONL in the project dir
+    let sessionId = null;
+    let totalIn = 0, totalOut = 0, cost = 0, model = '';
 
     if (fs.existsSync(projectsDir)) {
       try {
-        const files = fs.readdirSync(projectsDir);
-        for (const file of files) {
-          if (file.endsWith('.jsonl')) {
-            const p = path.join(projectsDir, file);
-            const mtime = fs.statSync(p).mtimeMs;
-            if (mtime > newestTime) {
-              newestTime = mtime;
-              newestFile = p;
-            }
+        let newestTime = 0, newestFile = null;
+        for (const file of fs.readdirSync(projectsDir)) {
+          if (!file.endsWith('.jsonl')) continue;
+          const p = path.join(projectsDir, file);
+          const mtime = fs.statSync(p).mtimeMs;
+          if (mtime > newestTime) { newestTime = mtime; newestFile = p; }
+        }
+        if (newestFile) {
+          sessionId = path.basename(newestFile, '.jsonl');
+          const lines = fs.readFileSync(newestFile, 'utf8').split('\n');
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const entry = JSON.parse(line);
+              if (entry.type === 'assistant' && entry.message?.usage) {
+                const u = entry.message.usage;
+                totalIn  += (u.input_tokens || 0)
+                  + Math.round((u.cache_read_input_tokens || 0) * 0.1)
+                  + (u.cache_creation_input_tokens || 0);
+                totalOut += (u.output_tokens || 0);
+                if (!model) model = entry.message.model || '';
+              } else if (entry.type === 'cost') {
+                cost += (entry.cost_usd || 0);
+              } else if (entry.type === 'message_start' && !model) {
+                model = entry.message?.model || '';
+              }
+            } catch (e) {}
           }
         }
-      } catch(e) {}
-    }
-
-    if (newestFile) {
-      const sessionId = path.basename(newestFile, '.jsonl');
-      let totalIn = 0;
-      let totalOut = 0;
-      let cost = 0.0;
-      let model = '';
-
-      try {
-        const content = fs.readFileSync(newestFile, 'utf8');
-        const lines = content.split('\n');
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const entry = JSON.parse(line);
-            if (entry.type === 'assistant' && entry.message?.usage) {
-              const u = entry.message.usage;
-              totalIn += (u.input_tokens || 0) + Math.round((u.cache_read_input_tokens || 0) * 0.1) + (u.cache_creation_input_tokens || 0);
-              totalOut += (u.output_tokens || 0);
-              if (!model) model = entry.message.model || 'Claude';
-            } else if (entry.type === 'cost') {
-              cost += (entry.cost_usd || 0.0);
-            } else if (entry.type === 'message_start' && !model) {
-              model = entry.message?.model || 'Claude';
-            }
-          } catch(e) {}
-        }
-      } catch(e) {}
-
-      if (!model) model = 'Claude';
-
-      try {
-        const stmt = db.prepare(`
-          UPDATE sessions 
-          SET session_id = ?, model = ?, end_time = CURRENT_TIMESTAMP, 
-              tokens_in = ?, tokens_out = ?, cost_usd = ?, exit_reason = ?,
-              duration_seconds = CAST((julianday('now') - julianday(start_time)) * 86400 as integer)
-          WHERE id = (SELECT id FROM sessions WHERE project_dir = ? AND exit_reason = 'pending' ORDER BY start_time DESC LIMIT 1)
-        `);
-        stmt.run(sessionId, model, totalIn, totalOut, cost, reason, projectDir);
       } catch (e) {}
     }
+
+    if (!model) model = 'Claude';
+
+    // Update the most recent pending session for this project
+    try {
+      const sessions = readSessions();
+      let updatedIdx = -1;
+      for (let i = sessions.length - 1; i >= 0; i--) {
+        if (sessions[i].project_dir === projectDir && sessions[i].exit_reason === 'pending') {
+          updatedIdx = i;
+          break;
+        }
+      }
+
+      if (updatedIdx !== -1) {
+        const s = sessions[updatedIdx];
+        const startMs = new Date(s.start_time.replace(' ', 'T') + 'Z').getTime();
+        const durationSeconds = Math.round((Date.now() - startMs) / 1000);
+        sessions[updatedIdx] = {
+          ...s,
+          session_id:       sessionId || s.session_id,
+          model,
+          end_time:         now(),
+          tokens_in:        totalIn,
+          tokens_out:       totalOut,
+          cost_usd:         cost,
+          duration_seconds: durationSeconds,
+          exit_reason:      reason,
+        };
+        writeSessions(sessions);
+      }
+    } catch (e) {}
+
     process.exit(0);
   });
 }
 
 async function handleHistory() {
-  const db = getDb();
-  if (!db) {
-    console.error('SQLite is not available. Please install @alyibrahim/claude-statusline with native modules, or ensure better-sqlite3 is successfully installed.');
-    process.exit(1);
-  }
-
   function fmt(n) {
     n = Number(n) || 0;
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -156,48 +161,47 @@ async function handleHistory() {
     return `${s}s`;
   }
 
-  try {
-    const rows = db.prepare('SELECT project_name, model, start_time, duration_seconds, tokens_in, tokens_out, cost_usd, exit_reason FROM sessions ORDER BY start_time DESC LIMIT 100').all();
-    const projects = db.prepare('SELECT DISTINCT project_name FROM sessions ORDER BY project_name').all();
+  const allSessions = readSessions().reverse().slice(0, 100);
 
-    const projectOptions = projects
-      .map(p => `<option value="${p.project_name}">${p.project_name}</option>`)
-      .join('\n          ');
+  const projectNames = [...new Set(allSessions.map(s => s.project_name))].sort();
+  const projectOptions = projectNames
+    .map(p => `<option value="${p}">${p}</option>`)
+    .join('\n          ');
 
-    let totalCost = 0.0, totalIn = 0, totalOut = 0, sessionCount = 0;
-    let rowsHtml = '';
+  let totalCost = 0, totalIn = 0, totalOut = 0, sessionCount = 0;
+  let rowsHtml = '';
 
-    for (const s of rows) {
-      if (s.exit_reason !== 'pending') {
-        totalCost += (s.cost_usd || 0);
-        totalIn   += (s.tokens_in  || 0);
-        totalOut  += (s.tokens_out || 0);
-        sessionCount++;
-      }
-      const isPending = s.exit_reason === 'pending';
-      const badgeClass = { normal: 'reason-badge normal', interrupt: 'reason-badge interrupt', pending: 'reason-badge pending' }[s.exit_reason] ?? 'reason-badge unknown';
-      const durCell    = isPending ? '\u2014' : dur(s.duration_seconds);
-      const tokInCell  = isPending ? '\u2014' : fmt(s.tokens_in);
-      const tokOutCell = isPending ? '\u2014' : fmt(s.tokens_out);
-      const costCell   = isPending ? '\u2014' : `$${Number(s.cost_usd).toFixed(4)}`;
-
-      rowsHtml += `
-            <tr data-project="${s.project_name}" data-tok-in="${isPending ? 0 : s.tokens_in}" data-tok-out="${isPending ? 0 : s.tokens_out}" data-cost="${isPending ? 0 : s.cost_usd}" data-pending="${isPending ? 1 : 0}">
-              <td><span class="tag">${s.project_name}</span></td>
-              <td class="col-model">${s.model}</td>
-              <td class="col-ts">${s.start_time}</td>
-              <td class="col-dur">${durCell}</td>
-              <td class="col-tok">${tokInCell}</td>
-              <td class="col-tok">${tokOutCell}</td>
-              <td class="col-cost">${costCell}</td>
-              <td><span class="${badgeClass}">${s.exit_reason}</span></td>
-            </tr>`;
+  for (const s of allSessions) {
+    if (s.exit_reason !== 'pending') {
+      totalCost += (s.cost_usd || 0);
+      totalIn   += (s.tokens_in  || 0);
+      totalOut  += (s.tokens_out || 0);
+      sessionCount++;
     }
+    const isPending   = s.exit_reason === 'pending';
+    const badgeClass  = { normal: 'reason-badge normal', interrupt: 'reason-badge interrupt', pending: 'reason-badge pending' }[s.exit_reason] ?? 'reason-badge unknown';
+    const durCell     = isPending ? '\u2014' : dur(s.duration_seconds);
+    const tokInCell   = isPending ? '\u2014' : fmt(s.tokens_in);
+    const tokOutCell  = isPending ? '\u2014' : fmt(s.tokens_out);
+    const costCell    = isPending ? '\u2014' : `$${Number(s.cost_usd).toFixed(4)}`;
 
-    const rowCount = rows.length;
-    const emptyRow = rowsHtml ? '' : '<tr><td colspan="8" style="text-align:center;padding:48px 20px;color:var(--text-3);font-size:13px;">No sessions recorded yet</td></tr>';
+    rowsHtml += `
+          <tr data-project="${s.project_name}" data-tok-in="${isPending ? 0 : s.tokens_in}" data-tok-out="${isPending ? 0 : s.tokens_out}" data-cost="${isPending ? 0 : s.cost_usd}" data-pending="${isPending ? 1 : 0}">
+            <td><span class="tag">${s.project_name}</span></td>
+            <td class="col-model">${s.model}</td>
+            <td class="col-ts">${s.start_time}</td>
+            <td class="col-dur">${durCell}</td>
+            <td class="col-tok">${tokInCell}</td>
+            <td class="col-tok">${tokOutCell}</td>
+            <td class="col-cost">${costCell}</td>
+            <td><span class="${badgeClass}">${s.exit_reason}</span></td>
+          </tr>`;
+  }
 
-    const html = `<!DOCTYPE html>
+  const rowCount = allSessions.length;
+  const emptyRow = rowsHtml ? '' : '<tr><td colspan="8" style="text-align:center;padding:48px 20px;color:var(--text-3);font-size:13px;">No sessions recorded yet</td></tr>';
+
+  const html = `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -586,14 +590,10 @@ filter.addEventListener('change', applyFilter);
 </body>
 </html>`;
 
-    const tempPath = path.join(os.tmpdir(), 'claude-statusline-dashboard.html');
-    fs.writeFileSync(tempPath, html);
-
-    console.log(`Opened dashboard at ${tempPath}`);
-    await open.default(tempPath);
-  } catch (e) {
-    console.error(`Failed to load database: ${e.message}`);
-  }
+  const tempPath = path.join(os.tmpdir(), 'claude-statusline-dashboard.html');
+  fs.writeFileSync(tempPath, html);
+  console.log(`Opened dashboard at ${tempPath}`);
+  await open.default(tempPath);
 }
 
 module.exports = { handleHookStart, handleHookEnd, handleHistory };

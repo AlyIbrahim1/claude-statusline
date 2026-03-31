@@ -62,7 +62,7 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 </div>
 
-Track token usage, cost, and duration across every Claude Code session with a built-in SQLite database and analytics dashboard.
+Track token usage, cost, and duration across every Claude Code session with a built-in analytics dashboard.
 
 ![history dashboard](https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/assets/history-dashboard.png)
 
@@ -85,7 +85,7 @@ claude-statusline enable-history   # Enable session tracking
 claude-statusline disable-history  # Disable session tracking
 ```
 
-Data is stored at `~/.claude/statusline-history.db`. The dashboard opens in your browser and supports project filtering and light/dark theme toggle.
+Data is stored at `~/.claude/statusline-history.jsonl`. The dashboard opens in your browser and supports project filtering and light/dark theme toggle.
 
 ---
 
@@ -117,7 +117,7 @@ See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform 
 | Subagent counter | Counts active agents from todos dir | — |
 | Session tokens | Real-time via JSONL offset cache, split I/O (`X↓ Y↑`) | Stale stdin snapshot or none |
 | Session commits | Tracks git commits made this session | — |
-| Session history | SQLite analytics dashboard with per-project filtering | — |
+| Session history | Analytics dashboard with per-project filtering, zero dependencies | — |
 
 ---
 

@@ -165,7 +165,7 @@ claude-statusline setup
 | Rust binary (~5ms) | x64, arm64 | x64, arm64 | x64 |
 | JS fallback | All others | — | — |
 | Git branch display | ✓ (requires git) | ✓ (requires git) | ✓ (requires git for Windows) |
-| Session history (SQLite) | ✓ | ✓ | ✓ |
+| Session history | ✓ | ✓ | ✓ |
 | Rate limits / usage | ✓ | ✓ | ✓ |
 | Session cost | ✓ | ✓ | ✓ |
 | Context bar | ✓ | ✓ | ✓ |
