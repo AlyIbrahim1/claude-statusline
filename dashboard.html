@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Statusline — Session History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Calistoga&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Theme tokens ── */
+[data-theme="dark"] {
+  --bg:             #1a1916;
+  --bg-header:      rgba(26,25,22,0.88);
+  --surface:        #242220;
+  --surface-hover:  #2a2825;
+  --surface-thead:  #1e1c1a;
+  --border:         #3a3733;
+  --border-subtle:  #302e2b;
+  --accent:         #D4673C;
+  --accent-mid:     rgba(212,103,60,0.14);
+  --text:           #E8E2DA;
+  --text-2:         #A09890;
+  --text-3:         #6B6460;
+  --green:          #4CAF84;
+  --green-bg:       rgba(76,175,132,0.15);
+  --amber:          #D4893A;
+  --amber-bg:       rgba(212,137,58,0.15);
+  --pending:        #A99ED4;
+  --pending-bg:     rgba(169,158,212,0.15);
+  --shadow-card:    0 1px 4px rgba(0,0,0,0.3), 0 0 0 1px var(--border);
+  --shadow-md:      0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2);
+  --toggle-bg:      #3a3733;
+  --toggle-knob:    #E8E2DA;
+}
+
+[data-theme="light"] {
+  --bg:             #FAF9F6;
+  --bg-header:      rgba(250,249,246,0.88);
+  --surface:        #FFFFFF;
+  --surface-hover:  #FDFCFA;
+  --surface-thead:  #F4F2EE;
+  --border:         #EAE4DD;
+  --border-subtle:  #F0EBE5;
+  --accent:         #C85A2E;
+  --accent-mid:     rgba(200,90,46,0.10);
+  --text:           #1C1410;
+  --text-2:         #6B5D57;
+  --text-3:         #9E8E87;
+  --green:          #1F7A50;
+  --green-bg:       rgba(31,122,80,0.10);
+  --amber:          #925010;
+  --amber-bg:       rgba(146,80,16,0.10);
+  --pending:        #6B5FA8;
+  --pending-bg:     rgba(107,95,168,0.10);
+  --shadow-card:    0 1px 3px rgba(28,20,16,0.07), 0 0 0 1px var(--border);
+  --shadow-md:      0 4px 16px rgba(28,20,16,0.10), 0 2px 4px rgba(28,20,16,0.06);
+  --toggle-bg:      #EAE4DD;
+  --toggle-knob:    #1C1410;
+}
+
+:root {
+  --radius:      12px;
+  --radius-sm:   8px;
+  --radius-tag:  6px;
+  --font-display:'Calistoga', Georgia, serif;
+  --font-body:   'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono:   'JetBrains Mono', 'Courier New', monospace;
+  --ease:        cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --header-h:    56px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.25s var(--ease), color 0.25s var(--ease);
+}
+
+/* ── Sticky header ── */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--header-h);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+}
+
+.header-inner {
+  width: 100%;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.brand-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.25s var(--ease);
+}
+
+.brand-icon svg { width: 16px; height: 16px; fill: #fff; }
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  transition: color 0.25s var(--ease);
+}
+
+.brand-name span { color: var(--accent); transition: color 0.25s var(--ease); }
+
+/* Header right controls */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Project filter dropdown */
+.filter-wrap { position: relative; }
+
+.filter-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 28px 6px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, color 0.15s, background 0.25s var(--ease);
+  min-width: 140px;
+}
+
+.filter-select:hover { border-color: var(--accent); color: var(--text); }
+.filter-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-mid); }
+
+.filter-chevron {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-3);
+}
+
+/* GitHub link */
+.gh-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s, background 0.25s var(--ease);
+  white-space: nowrap;
+}
+
+.gh-link:hover { border-color: var(--accent); color: var(--text); }
+.gh-link svg { width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
+
+/* Dark/light toggle */
+.theme-toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--toggle-bg);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.25s var(--ease);
+  flex-shrink: 0;
+}
+
+.theme-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--toggle-knob);
+  transition: transform 0.25s var(--ease), background 0.25s var(--ease);
+}
+
+[data-theme="light"] .theme-toggle::after { transform: translateX(18px); }
+
+/* ── Main layout ── */
+.wrap {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 36px 28px 64px;
+}
+
+/* ── Page title ── */
+.page-title {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.page-title h1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  transition: color 0.25s var(--ease);
+}
+
+.page-title p {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 6px;
+  font-weight: 400;
+  transition: color 0.25s var(--ease);
+}
+
+/* ── Section label ── */
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 12px;
+  transition: color 0.25s var(--ease);
+}
+
+/* ── Summary cards ── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 36px;
+}
+
+.card {
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius);
+  padding: 22px 22px 18px;
+  transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), background 0.25s var(--ease);
+  animation: fadeUp 0.4s var(--ease) both;
+}
+
+.card:nth-child(1) { animation-delay: 0.05s; }
+.card:nth-child(2) { animation-delay: 0.10s; }
+.card:nth-child(3) { animation-delay: 0.15s; }
+.card:nth-child(4) { animation-delay: 0.20s; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+.card-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 10px;
+  transition: color 0.25s var(--ease);
+}
+
+.card-value {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.card-value.coral { color: var(--accent); }
+.card-value.amber { color: var(--amber); }
+.card-value.green { color: var(--green); }
+
+.card-sub {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 8px;
+  font-weight: 400;
+  transition: color 0.25s var(--ease);
+}
+
+/* ── Table section ── */
+.table-section { animation: fadeUp 0.4s var(--ease) 0.25s both; }
+
+.table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.table-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  transition: color 0.25s var(--ease);
+}
+
+.table-count {
+  font-size: 12px;
+  color: var(--text-3);
+  background: var(--border-subtle);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+  transition: background 0.25s var(--ease), color 0.25s var(--ease);
+}
+
+.table-wrap {
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: background 0.25s var(--ease);
+}
+
+.table-scroll { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; min-width: 860px; }
+
+/* Distinct header */
+thead tr {
+  background: var(--surface-thead);
+  border-bottom: 2px solid var(--border);
+}
+
+thead th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  transition: background 0.25s var(--ease), color 0.25s var(--ease);
+}
+
+/* First column accent-tinted header */
+thead th:first-child { color: var(--accent); opacity: 0.8; }
+
+tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s var(--ease);
+}
+
+tbody tr:last-child { border-bottom: none; }
+tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+[data-theme="light"] tbody tr:nth-child(even) { background: rgba(0,0,0,0.015); }
+tbody tr:hover { background: var(--accent-mid); }
+
+tbody td { padding: 11px 16px; font-size: 13px; white-space: nowrap; }
+
+/* ── Cell styles ── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-tag);
+  background: var(--accent-mid);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.25s var(--ease), color 0.25s var(--ease);
+}
+
+.tag::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.col-model { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.col-ts    { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.col-dur   { font-family: var(--font-mono); font-size: 12px; color: var(--text); font-weight: 500; }
+.col-tok   { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--amber); }
+.col-cost  { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--green); }
+
+.reason-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.reason-badge.normal    { background: var(--green-bg);   color: var(--green); }
+.reason-badge.interrupt { background: var(--amber-bg);   color: var(--amber); }
+.reason-badge.pending   { background: var(--pending-bg); color: var(--pending); font-style: italic; }
+.reason-badge.unknown   { background: var(--border-subtle); color: var(--text-3); }
+
+/* ── Responsive ── */
+@media (max-width: 840px) {
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  .wrap  { padding: 24px 16px 48px; }
+  .header-inner { padding: 0 16px; }
+  .wrap { padding: 24px 16px 48px; }
+  .gh-link span { display: none; }
+}
+
+@media (max-width: 600px) {
+  .filter-select { min-width: 110px; }
+  .brand-name { font-size: 15px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .table-section { animation: none; }
+  .card:hover { transform: none; }
+  * { transition-duration: 0ms !important; }
+}
+
+/* Hidden rows (filtered) */
+tbody tr.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ── Sticky Header ── -->
+<header class="header">
+  <div class="header-inner">
+
+    <!-- Left: brand -->
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 1.5C4.86 1.5 1.5 4.86 1.5 9s3.36 7.5 7.5 7.5 7.5-3.36 7.5-7.5S13.14 1.5 9 1.5zm0 2.5a5 5 0 110 10A5 5 0 019 4zm0 2a3 3 0 100 6 3 3 0 000-6z"/>
+        </svg>
+      </div>
+      <div class="brand-name">claude<span>.</span>statusline</div>
+    </div>
+
+    <!-- Right: controls -->
+    <div class="header-controls">
+
+      <!-- Project filter -->
+      <div class="filter-wrap">
+        <select class="filter-select" id="projectFilter" aria-label="Filter by project">
+          <option value="">All projects</option>
+          <option value="claude-statusline">claude-statusline</option>
+          <option value="my-saas-app">my-saas-app</option>
+          <option value="dotfiles">dotfiles</option>
+        </select>
+        <svg class="filter-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <!-- GitHub link -->
+      <a class="gh-link" href="https://github.com/alyibrahim/claude-statusline" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+
+      <!-- Theme toggle -->
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark/light mode" title="Toggle theme"></button>
+
+    </div>
+  </div>
+</header>
+
+<!-- ── Main content ── -->
+<main class="wrap">
+
+  <!-- Page title -->
+  <div class="page-title">
+    <h1>Session History</h1>
+    <p>Claude Code usage across all projects</p>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="section-label">Overview</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Sessions</div>
+      <div class="card-value coral" id="statSessions">24</div>
+      <div class="card-sub">recorded</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Tokens In</div>
+      <div class="card-value amber" id="statTokIn">8.4M</div>
+      <div class="card-sub">input tokens</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Tokens Out</div>
+      <div class="card-value amber" id="statTokOut">1.2M</div>
+      <div class="card-sub">output tokens</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total Spend</div>
+      <div class="card-value green" id="statCost">$14.73</div>
+      <div class="card-sub">USD</div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-section">
+    <div class="table-header">
+      <div class="table-title">Session Log</div>
+      <div class="table-count" id="rowCount">7 entries</div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Model</th>
+              <th>Start Time</th>
+              <th>Duration</th>
+              <th>Tokens In</th>
+              <th>Tokens Out</th>
+              <th>Cost</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr data-project="claude-statusline" data-tok-in="1400000" data-tok-out="198300" data-cost="2.8812" data-pending="0">
+              <td><span class="tag">claude-statusline</span></td>
+              <td class="col-model">claude-sonnet-4-6</td>
+              <td class="col-ts">2026-03-30 03:14:22</td>
+              <td class="col-dur">1h 12m</td>
+              <td class="col-tok">1.4M</td>
+              <td class="col-tok">198.3k</td>
+              <td class="col-cost">$2.8812</td>
+              <td><span class="reason-badge normal">normal</span></td>
+            </tr>
+            <tr data-project="claude-statusline" data-tok-in="920100" data-tok-out="134700" data-cost="1.9340" data-pending="0">
+              <td><span class="tag">claude-statusline</span></td>
+              <td class="col-model">claude-sonnet-4-6</td>
+              <td class="col-ts">2026-03-29 22:47:05</td>
+              <td class="col-dur">54m</td>
+              <td class="col-tok">920.1k</td>
+              <td class="col-tok">134.7k</td>
+              <td class="col-cost">$1.9340</td>
+              <td><span class="reason-badge normal">normal</span></td>
+            </tr>
+            <tr data-project="my-saas-app" data-tok-in="2100000" data-tok-out="310500" data-cost="4.1200" data-pending="0">
+              <td><span class="tag">my-saas-app</span></td>
+              <td class="col-model">claude-opus-4-6</td>
+              <td class="col-ts">2026-03-29 18:03:11</td>
+              <td class="col-dur">2h 4m</td>
+              <td class="col-tok">2.1M</td>
+              <td class="col-tok">310.5k</td>
+              <td class="col-cost">$4.1200</td>
+              <td><span class="reason-badge normal">normal</span></td>
+            </tr>
+            <tr data-project="claude-statusline" data-tok-in="487200" data-tok-out="72900" data-cost="0.9140" data-pending="0">
+              <td><span class="tag">claude-statusline</span></td>
+              <td class="col-model">claude-sonnet-4-6</td>
+              <td class="col-ts">2026-03-29 14:22:48</td>
+              <td class="col-dur">38m</td>
+              <td class="col-tok">487.2k</td>
+              <td class="col-tok">72.9k</td>
+              <td class="col-cost">$0.9140</td>
+              <td><span class="reason-badge normal">normal</span></td>
+            </tr>
+            <tr data-project="dotfiles" data-tok-in="84600" data-tok-out="11200" data-cost="0.0730" data-pending="0">
+              <td><span class="tag">dotfiles</span></td>
+              <td class="col-model">claude-haiku-4-5</td>
+              <td class="col-ts">2026-03-28 20:55:33</td>
+              <td class="col-dur">12m</td>
+              <td class="col-tok">84.6k</td>
+              <td class="col-tok">11.2k</td>
+              <td class="col-cost">$0.0730</td>
+              <td><span class="reason-badge normal">normal</span></td>
+            </tr>
+            <tr data-project="my-saas-app" data-tok-in="603800" data-tok-out="89400" data-cost="1.1260" data-pending="0">
+              <td><span class="tag">my-saas-app</span></td>
+              <td class="col-model">claude-sonnet-4-6</td>
+              <td class="col-ts">2026-03-28 09:10:04</td>
+              <td class="col-dur">47m</td>
+              <td class="col-tok">603.8k</td>
+              <td class="col-tok">89.4k</td>
+              <td class="col-cost">$1.1260</td>
+              <td><span class="reason-badge interrupt">interrupt</span></td>
+            </tr>
+            <tr data-project="claude-statusline" data-tok-in="0" data-tok-out="0" data-cost="0" data-pending="1">
+              <td><span class="tag">claude-statusline</span></td>
+              <td class="col-model">claude-sonnet-4-6</td>
+              <td class="col-ts">2026-03-30 03:58:01</td>
+              <td class="col-dur">—</td>
+              <td class="col-tok">—</td>
+              <td class="col-tok">—</td>
+              <td class="col-cost">—</td>
+              <td><span class="reason-badge pending">pending</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// Theme toggle
+const toggle = document.getElementById('themeToggle');
+const html = document.documentElement;
+html.setAttribute('data-theme', localStorage.getItem('theme') || 'dark');
+toggle.addEventListener('click', () => {
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+});
+
+// Formatting helpers
+function fmtTokens(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+  return String(n);
+}
+
+// Project filter + overview update
+const filter   = document.getElementById('projectFilter');
+const rows     = document.querySelectorAll('#tableBody tr');
+const countEl  = document.getElementById('rowCount');
+const statSessions = document.getElementById('statSessions');
+const statTokIn    = document.getElementById('statTokIn');
+const statTokOut   = document.getElementById('statTokOut');
+const statCost     = document.getElementById('statCost');
+
+function applyFilter() {
+  const val = filter.value;
+  let sessions = 0, tokIn = 0, tokOut = 0, cost = 0, visible = 0;
+
+  rows.forEach(row => {
+    const match = !val || row.dataset.project === val;
+    row.classList.toggle('hidden', !match);
+    if (match) {
+      visible++;
+      if (row.dataset.pending !== '1') {
+        sessions++;
+        tokIn  += Number(row.dataset.tokIn)  || 0;
+        tokOut += Number(row.dataset.tokOut) || 0;
+        cost   += Number(row.dataset.cost)   || 0;
+      }
+    }
+  });
+
+  countEl.textContent      = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
+  statSessions.textContent = sessions;
+  statTokIn.textContent    = fmtTokens(tokIn);
+  statTokOut.textContent   = fmtTokens(tokOut);
+  statCost.textContent     = '$' + cost.toFixed(2);
+}
+
+filter.addEventListener('change', applyFilter);
+</script>
+</body>
+</html>
