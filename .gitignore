@@ -1,9 +1,7 @@
 node_modules/
 *.tmp
-coverage/
 .worktrees/
 target/
-Cargo.lock
 internal-docs/
 .vscode/
 memory/
