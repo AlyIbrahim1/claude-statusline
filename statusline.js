@@ -9,7 +9,10 @@ const { execSync, execFileSync } = require('child_process');
 
 const cmd = process.argv[2];
 if (cmd === 'history') {
-  require('./scripts/history').handleHistory();
+  require('./scripts/history').handleHistory().catch(e => {
+    console.error('history error:', e.message);
+    process.exit(1);
+  });
   return;
 } else if (cmd === 'hook') {
   const hookcmd = process.argv[3];

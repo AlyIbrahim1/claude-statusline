@@ -592,8 +592,12 @@ filter.addEventListener('change', applyFilter);
 
   const tempPath = path.join(os.tmpdir(), 'claude-statusline-dashboard.html');
   fs.writeFileSync(tempPath, html);
-  console.log(`Opened dashboard at ${tempPath}`);
-  await open.default(tempPath);
+  try {
+    await open.default(tempPath);
+    console.log(`Dashboard opened: ${tempPath}`);
+  } catch (e) {
+    console.log(`Dashboard saved: ${tempPath}`);
+  }
 }
 
 module.exports = { handleHookStart, handleHookEnd, handleHistory };

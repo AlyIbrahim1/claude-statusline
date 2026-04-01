@@ -722,8 +722,11 @@ pub fn handle_history() {
 
     let file_path = std::env::temp_dir().join("claude-statusline-dashboard.html");
     if fs::write(&file_path, &html).is_ok() {
-        let _ = open::that(&file_path);
-        println!("Opened dashboard at {}", file_path.display());
+        if open::that(&file_path).is_ok() {
+            println!("Dashboard opened: {}", file_path.display());
+        } else {
+            println!("Dashboard saved: {}", file_path.display());
+        }
     } else {
         eprintln!("Failed to write dashboard HTML file.");
     }
