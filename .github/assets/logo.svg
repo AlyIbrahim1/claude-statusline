@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="100%">
+  <style>
+    .claude-text { font-family: 'Georgia', 'Times New Roman', serif; font-size: 68px; fill: #1e1e1e; font-style: italic; }
+    .status-text { font-family: 'Fira Code', 'JetBrains Mono', 'Courier New', monospace; font-size: 54px; fill: #D97757; font-weight: 600; }
+    .subtext { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; fill: #888; letter-spacing: 3px; font-weight: 600; }
+    .term-box { fill: #FAF9F5; stroke: #E6E2D6; stroke-width: 2px; }
+    .term-dots { fill: #D97757; }
+    .term-prompt { stroke: #1e1e1e; }
+    .term-bar { fill: #D97757; }
+    
+    /* Automatically switches colors when the user's GitHub theme is dark */
+    @media (prefers-color-scheme: dark) {
+      .claude-text { fill: #E5E0D8; }
+      .status-text { fill: #D97757; }
+      .subtext { fill: #A0A0A0; }
+      .term-box { fill: #151515; stroke: #333; }
+      .term-prompt { stroke: #E5E0D8; }
+    }
+  </style>
+
+  <g transform="translate(40, 40)">
+    <rect x="0" y="0" width="140" height="110" rx="6" class="term-box"/>
+    
+    <circle cx="16" cy="18" r="4" class="term-dots" opacity="0.9"/>
+    <circle cx="32" cy="18" r="4" class="term-dots" opacity="0.5"/>
+    <circle cx="48" cy="18" r="4" class="term-dots" opacity="0.3"/>
+    
+    <path d="M 16 45 L 26 55 L 16 65" fill="none" class="term-prompt" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="34" y1="65" x2="54" y2="65" class="term-prompt" stroke-width="3" stroke-linecap="round"/>
+    
+    <path d="M 0 85 L 140 85 L 140 104 Q 140 110 134 110 L 6 110 Q 0 110 0 104 Z" class="term-bar"/>
+    <rect x="10" y="90" width="35" height="12" rx="3" fill="#fff" opacity="0.9"/>
+    <rect x="50" y="90" width="20" height="12" rx="3" fill="#fff" opacity="0.5"/>
+    <rect x="75" y="90" width="55" height="12" rx="3" fill="#fff" opacity="0.2"/>
+  </g>
+
+  <text x="210" y="115" class="claude-text">claude</text>
+  <text x="440" y="115" class="status-text">-statusline</text>
+  <text x="215" y="145" class="subtext">FAST RUST-BASED CLAUDE CODE INTEGRATION</text>
+</svg>
