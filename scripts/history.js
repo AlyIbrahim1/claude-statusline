@@ -158,7 +158,7 @@ async function handleHistory() {
   // Inject CSS, JS, and data into the template using the sentinel strings
   const html = template
     .replace('/*INJECT_CSS*/', css)
-    .replace('/*INJECT_DATA*/', sessionsJson)
+    .replace('/*INJECT_DATA*/null', sessionsJson)
     .replace('/*INJECT_JS*/', js);
 
   const tempPath = path.join(os.tmpdir(), 'claude-statusline-dashboard.html');

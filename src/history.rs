@@ -256,7 +256,7 @@ pub fn handle_history() {
     // At runtime we replace those tags with inlined content to produce a self-contained file.
     let html = template
         .replace(r#"<link rel="stylesheet" href="styles.css">"#, &format!("<style>{css}</style>"))
-        .replace("/*INJECT_DATA*/", &sessions_json)
+        .replace("/*INJECT_DATA*/null", &sessions_json)
         .replace(r#"<script src="script.js"></script>"#, &format!("<script>{js}</script>"));
 
     let file_path = std::env::temp_dir().join("claude-statusline-dashboard.html");

@@ -27,7 +27,7 @@ function fmtDuration(s) {
     return `${s}s`;
 }
 
-// ── Render rows from SESSIONS_DATA ──
+// ── Render rows ──
 const tbody      = document.getElementById('tableBody');
 const filterEl   = document.getElementById('projectFilter');
 const statSessions = document.getElementById('statSessions');
@@ -35,48 +35,68 @@ const statTokIn    = document.getElementById('statTokIn');
 const statTokOut   = document.getElementById('statTokOut');
 const statCost     = document.getElementById('statCost');
 
-// Populate project filter options from data
-const projectNames = [...new Set(SESSIONS_DATA.map(s => s.project_name))].sort();
-projectNames.forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    filterEl.appendChild(opt);
-});
+let SESSIONS_DATA = [];
 
-// Badge class mapping
-function badgeClass(reason) {
-    return { normal: 'reason-badge normal', interrupt: 'reason-badge interrupt', pending: 'reason-badge pending' }[reason] ?? 'reason-badge unknown';
+async function populateHistory() {
+    if (typeof INJECTED_DATA !== 'undefined' && INJECTED_DATA !== null) {
+        SESSIONS_DATA = INJECTED_DATA;
+    } else {
+        try {
+            const res = await fetch('mockData.jsonl');
+            const text = await res.text();
+            SESSIONS_DATA = text.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+        } catch (e) {
+            console.error("Failed to load mockData.jsonl", e);
+            SESSIONS_DATA = [];
+        }
+    }
+
+    // Populate project filter options from data
+    const projectNames = [...new Set(SESSIONS_DATA.map(s => s.project_name))].sort();
+    projectNames.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        filterEl.appendChild(opt);
+    });
+
+    // Badge class mapping
+    function badgeClass(reason) {
+        return { normal: 'reason-badge normal', interrupt: 'reason-badge interrupt', pending: 'reason-badge pending' }[reason] ?? 'reason-badge unknown';
+    }
+
+    // Build table rows
+    SESSIONS_DATA.forEach(s => {
+        const isPending = s.exit_reason === 'pending';
+        const dash = '\u2014';
+
+        const tr = document.createElement('tr');
+        tr.dataset.project = s.project_name;
+        tr.dataset.tokIn   = isPending ? '0' : String(s.tokens_in || 0);
+        tr.dataset.tokOut  = isPending ? '0' : String(s.tokens_out || 0);
+        tr.dataset.cost    = isPending ? '0' : String(s.cost_usd || 0);
+        tr.dataset.pending = isPending ? '1' : '0';
+
+        tr.innerHTML = `
+            <td><span class="tag">${s.project_name}</span></td>
+            <td class="col-model">${s.model}</td>
+            <td class="col-ts">${s.start_time}</td>
+            <td class="col-dur">${isPending ? dash : fmtDuration(s.duration_sec || s.duration_seconds)}</td>
+            <td class="col-tok">${isPending ? dash : fmtTokens(s.tokens_in)}</td>
+            <td class="col-tok">${isPending ? dash : fmtTokens(s.tokens_out)}</td>
+            <td class="col-cost">${isPending ? dash : '$' + Number(s.cost_usd || 0).toFixed(4)}</td>
+            <td><span class="${badgeClass(s.reason || s.exit_reason)}">${s.reason || s.exit_reason}</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    if (SESSIONS_DATA.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:48px 20px;color:var(--text-3);font-size:13px;">No sessions recorded yet</td></tr>';
+    }
+
+    applyFilter();
 }
-
-// Build table rows
-SESSIONS_DATA.forEach(s => {
-    const isPending = s.exit_reason === 'pending';
-    const dash = '\u2014';
-
-    const tr = document.createElement('tr');
-    tr.dataset.project = s.project_name;
-    tr.dataset.tokIn   = isPending ? '0' : String(s.tokens_in);
-    tr.dataset.tokOut  = isPending ? '0' : String(s.tokens_out);
-    tr.dataset.cost    = isPending ? '0' : String(s.cost_usd);
-    tr.dataset.pending = isPending ? '1' : '0';
-
-    tr.innerHTML = `
-        <td><span class="tag">${s.project_name}</span></td>
-        <td class="col-model">${s.model}</td>
-        <td class="col-ts">${s.start_time}</td>
-        <td class="col-dur">${isPending ? dash : fmtDuration(s.duration_seconds)}</td>
-        <td class="col-tok">${isPending ? dash : fmtTokens(s.tokens_in)}</td>
-        <td class="col-tok">${isPending ? dash : fmtTokens(s.tokens_out)}</td>
-        <td class="col-cost">${isPending ? dash : '$' + Number(s.cost_usd).toFixed(4)}</td>
-        <td><span class="${badgeClass(s.exit_reason)}">${s.exit_reason}</span></td>
-    `;
-    tbody.appendChild(tr);
-});
-
-if (SESSIONS_DATA.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:48px 20px;color:var(--text-3);font-size:13px;">No sessions recorded yet</td></tr>';
-}
+populateHistory();
 
 // ── Filter + stats ──
 function applyFilter() {
@@ -105,4 +125,3 @@ function applyFilter() {
 }
 
 filterEl.addEventListener('change', applyFilter);
-applyFilter(); // run on load to set initial stats
