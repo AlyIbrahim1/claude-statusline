@@ -7,15 +7,6 @@
     .term-dots { fill: #D97757; }
     .term-prompt { stroke: #1e1e1e; }
     .term-bar { fill: #D97757; }
-    
-    /* Automatically switches colors when the user's GitHub theme is dark */
-    @media (prefers-color-scheme: dark) {
-      .claude-text { fill: #E5E0D8; }
-      .status-text { fill: #D97757; }
-      .subtext { fill: #A0A0A0; }
-      .term-box { fill: #151515; stroke: #333; }
-      .term-prompt { stroke: #E5E0D8; }
-    }
   </style>
 
   <g transform="translate(40, 40)">
