@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install -D http-server
+          npm install -D http-server playwright
           npx playwright install --with-deps chromium
 
       - name: Create assets directory
@@ -35,7 +35,7 @@ jobs:
           npx http-server ./dashboard-design -p 8080 &
           SERVER_PID=$!
           sleep 3
-          npx playwright screenshot http://localhost:8080/dashboard.html assets/dashboard-preview.png --browser chromium --viewport-size "1280, 800" --wait-for-selector "#tableBody tr" --full-page
+          node .github/scripts/capture-dashboard.js
           kill $SERVER_PID
 
       - name: Commit and push changes
