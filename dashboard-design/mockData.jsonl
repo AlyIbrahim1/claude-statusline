@@ -1,4 +1,4 @@
 {"project_name": "claude-statusline", "model": "claude-3-5-sonnet-20241022", "start_time": "2024-10-31 02:40:48", "duration_sec": 14, "tokens_in": 8890, "tokens_out": 412, "cost_usd": 0.03, "reason": "dashboard styling"}
 {"project_name": "claude-statusline", "model": "claude-3-5-sonnet-20241022", "start_time": "2024-10-31 02:25:12", "duration_sec": 120, "tokens_in": 12450, "tokens_out": 1024, "cost_usd": 0.05, "reason": "refactoring layout"}
-{"project_name": "rust-proxy", "model": "claude-3-haiku-20240307", "start_time": "2024-10-30 11:10:00", "duration_sec": 8, "tokens_in": 4120, "tokens_out": 156, "cost_usd": 0.002, "reason": "fixing tests"}
+{"project_name": "rust-proxy", "model": "claude-3-haiku-20240307", "start_time": "2024-10-30 11:10:00", "duration_sec": 10, "tokens_in": 4120, "tokens_out": 156, "cost_usd": 0.002, "reason": "fixing tests"}
 {"project_name": "my-next-app", "model": "claude-3-opus-20240229", "start_time": "2024-10-30 08:05:32", "duration_sec": 450, "tokens_in": 35000, "tokens_out": 4200, "cost_usd": 0.85, "reason": "architectural review"}
