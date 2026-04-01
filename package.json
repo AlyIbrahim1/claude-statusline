@@ -1,6 +1,6 @@
 {
   "name": "@alyibrahim/claude-statusline",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Rich statusline for Claude Code — model, context bar, real-time token tracking, git branch, rate limits, and session stats. Rust binary, ~5ms startup.",
   "keywords": [
     "claude",

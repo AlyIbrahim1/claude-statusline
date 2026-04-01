@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Statusline — Session History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Calistoga&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ── Sticky Header ── -->
+<header class="header">
+  <div class="header-inner">
+
+    <!-- Left: brand -->
+    <div class="brand">
+      <svg viewBox="0 0 800 200" height="72" class="brand-logo" aria-label="claude-statusline logo">
+        <style>
+          .brand-logo .claude-text { font-family: var(--font-display); font-size: 68px; fill: var(--text); font-style: italic; transition: fill 0.25s var(--ease); }
+          .brand-logo .status-text { font-family: var(--font-mono); font-size: 54px; fill: var(--accent); font-weight: 600; transition: fill 0.25s var(--ease); }
+          .brand-logo .subtext { font-family: var(--font-body); font-size: 14px; fill: var(--text-3); letter-spacing: 3px; font-weight: 600; transition: fill 0.25s var(--ease); }
+          .brand-logo .term-box { fill: #151515; stroke: #333; stroke-width: 2px; }
+          .brand-logo .term-dots { fill: #D97757; }
+          .brand-logo .term-prompt { stroke: #E5E0D8; }
+          .brand-logo .term-bar { fill: #D97757; }
+        </style>
+
+        <g transform="translate(40, 40)">
+          <rect x="0" y="0" width="140" height="110" rx="6" class="term-box"/>
+          <circle cx="16" cy="18" r="4" class="term-dots" opacity="0.9"/>
+          <circle cx="32" cy="18" r="4" class="term-dots" opacity="0.5"/>
+          <circle cx="48" cy="18" r="4" class="term-dots" opacity="0.3"/>
+          <path d="M 16 45 L 26 55 L 16 65" fill="none" class="term-prompt" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="34" y1="65" x2="54" y2="65" class="term-prompt" stroke-width="3" stroke-linecap="round"/>
+          <path d="M 0 85 L 140 85 L 140 104 Q 140 110 134 110 L 6 110 Q 0 110 0 104 Z" class="term-bar"/>
+          <rect x="10" y="90" width="35" height="12" rx="3" fill="#fff" opacity="0.9"/>
+          <rect x="50" y="90" width="20" height="12" rx="3" fill="#fff" opacity="0.5"/>
+          <rect x="75" y="90" width="55" height="12" rx="3" fill="#fff" opacity="0.2"/>
+        </g>
+
+        <text x="210" y="115" class="claude-text">claude</text>
+        <text x="440" y="115" class="status-text">-statusline</text>
+        <text x="215" y="145" class="subtext">FAST RUST-BASED CLAUDE CODE INTEGRATION</text>
+      </svg>
+    </div>
+
+    <!-- Right: controls -->
+    <div class="header-controls">
+
+      <!-- Project filter -->
+      <div class="filter-wrap">
+        <select class="filter-select" id="projectFilter" aria-label="Filter by project">
+          <option value="">All projects</option>
+        </select>
+        <svg class="filter-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <!-- GitHub link -->
+      <a class="gh-link" href="https://github.com/AlyIbrahim1/claude-statusline" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+
+      <!-- Theme toggle -->
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark/light mode" title="Toggle theme">
+        <span class="toggle-icon toggle-icon-sun"  aria-hidden="true">☀</span>
+        <span class="toggle-icon toggle-icon-moon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1em; height: 1em;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></span>
+      </button>
+
+    </div>
+  </div>
+</header>
+
+<!-- ── Main content ── -->
+<main class="wrap">
+
+  <!-- Page title -->
+  <div class="page-title">
+    <h1>Session History</h1>
+    <p>Claude Code usage across all projects</p>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="table-header">
+    <div class="table-title">Overview</div>
+  </div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Sessions</div>
+      <div class="card-value coral" id="statSessions">—</div>
+      <div class="card-sub">recorded</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Tokens In</div>
+      <div class="card-value amber" id="statTokIn">—</div>
+      <div class="card-sub">input tokens</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Tokens Out</div>
+      <div class="card-value amber" id="statTokOut">—</div>
+      <div class="card-sub">output tokens</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total Spend</div>
+      <div class="card-value green" id="statCost">—</div>
+      <div class="card-sub">USD</div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-section">
+    <div class="table-header">
+      <div class="table-title">Session Log</div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Model</th>
+              <th>Start Time</th>
+              <th>Duration</th>
+              <th>Tokens In</th>
+              <th>Tokens Out</th>
+              <th>Cost</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const SESSIONS_DATA = /*INJECT_DATA*/[];
+</script>
+<script src="script.js"></script>
+</body>
+</html>
