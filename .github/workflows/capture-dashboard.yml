@@ -1,0 +1,45 @@
+name: Capture Dashboard Design
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dashboard-design/**'
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm install -D http-server
+          npx playwright install --with-deps chromium
+
+      - name: Create assets directory
+        run: mkdir -p assets
+
+      - name: Serve and Capture
+        run: |
+          npx http-server ./dashboard-design -p 8080 &
+          SERVER_PID=$!
+          sleep 3
+          npx playwright screenshot http://localhost:8080/dashboard.html assets/dashboard-preview.png --browser chromium --viewport-size "1280, 800" --wait-for-selector "#tableBody tr" --full-page
+          kill $SERVER_PID
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update dashboard screenshot [skip ci]"
+          file_pattern: 'assets/dashboard-preview.png'
