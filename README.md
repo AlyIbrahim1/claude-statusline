@@ -63,8 +63,6 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 Track token usage, cost, and duration across every Claude Code session with a built-in analytics dashboard.
 
-</div>
-
 ![history dashboard](assets/dashboard-preview.png)
 
 Session history is **enabled by default** on setup. Each session records:
@@ -77,6 +75,8 @@ Session history is **enabled by default** on setup. Each session records:
 | Cost | USD cost (API key users) |
 | Duration | Session length in seconds |
 | Exit reason | How the session ended |
+
+</div>
 
 **Commands:**
 
