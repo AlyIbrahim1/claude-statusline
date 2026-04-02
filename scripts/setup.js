@@ -109,4 +109,47 @@ function toggleHistory(enable) {
   return { ok: true, settingsPath };
 }
 
-module.exports = { setup, toggleHistory, updateHooks };
+function getDashboardMode() {
+  const settingsPath = getSettingsPath();
+  if (!fs.existsSync(settingsPath)) {
+    return { ok: true, settingsPath, mode: 'web' };
+  }
+
+  let settings = {};
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  } catch (e) {
+    return { ok: false, error: 'settings.json contains invalid JSON - fix manually then re-run.' };
+  }
+
+  const mode = settings.dashboardMode === 'terminal' ? 'terminal' : 'web';
+  return { ok: true, settingsPath, mode };
+}
+
+function setDashboardMode(mode) {
+  if (mode !== 'web' && mode !== 'terminal') {
+    return { ok: false, error: 'Invalid mode. Expected "web" or "terminal".' };
+  }
+
+  const settingsPath = getSettingsPath();
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    } catch (e) {
+      return { ok: false, error: 'settings.json contains invalid JSON - fix manually then re-run.' };
+    }
+  }
+
+  settings.dashboardMode = mode;
+
+  try {
+    atomicWrite(settingsPath, settings);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+
+  return { ok: true, settingsPath, mode };
+}
+
+module.exports = { setup, toggleHistory, updateHooks, getDashboardMode, setDashboardMode };

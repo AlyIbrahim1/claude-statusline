@@ -1,4 +1,5 @@
 mod history;
+mod history_tui;
 
 use std::io::Read;
 use std::sync::mpsc;
@@ -421,7 +422,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() >= 2 {
         if args[1] == "history" {
-            history::handle_history();
+            if args.len() >= 3 && args[2] == "--terminal" {
+                history_tui::run();
+            } else {
+                history::handle_history();
+            }
             return;
         } else if args[1] == "hook" && args.len() >= 3 {
             if args[2] == "start" {
