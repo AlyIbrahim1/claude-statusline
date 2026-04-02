@@ -192,7 +192,7 @@ pub fn handle_hook_end() {
                     if entry["type"] == "assistant" {
                         if let Some(usage) = entry["message"]["usage"].as_object() {
                             total_in += usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
-                                + (usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0) / 10)
+                                + (usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0).saturating_add(5) / 10)
                                 + usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
                             total_out += usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
                         }

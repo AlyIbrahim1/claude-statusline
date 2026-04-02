@@ -62,9 +62,9 @@ function updateHooks(settings, command, enable) {
     // Remove any existing statusline hook entries (both old and new format)
     settings.hooks[hookName] = settings.hooks[hookName].filter(h => {
       if (h.hooks) {
-        return !h.hooks.some(inner => inner.command && (inner.command.includes('hook start') || inner.command.includes('hook end')));
+        return !h.hooks.some(inner => inner.command && (inner.command.endsWith(' hook start') || inner.command.endsWith(' hook end')));
       }
-      return !(h.command && (h.command.includes('hook start') || h.command.includes('hook end')));
+      return !(h.command && (h.command.endsWith(' hook start') || h.command.endsWith(' hook end')));
     });
     if (enable) {
       settings.hooks[hookName].push({ matcher: '', hooks: [{ type: 'command', command: cmdString }] });

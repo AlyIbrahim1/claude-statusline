@@ -341,7 +341,7 @@ fn read_session_tokens(
         return None;
     }
 
-    let slug = abs_dir.replace('/', "-");
+    let slug = abs_dir.replace(['/', '\\'], "-");
     let jsonl_path = claude_dir
         .join("projects")
         .join(&slug)
@@ -387,7 +387,7 @@ fn read_session_tokens(
                             + (usage
                                 .get("cache_read_input_tokens")
                                 .and_then(|v| v.as_u64())
-                                .unwrap_or(0) / 10)
+                                .unwrap_or(0).saturating_add(5) / 10)
                             + usage
                                 .get("cache_creation_input_tokens")
                                 .and_then(|v| v.as_u64())
