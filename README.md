@@ -63,7 +63,7 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 ## Session History
 
-Track token usage, cost, and duration across every Claude Code session with a built-in analytics dashboard.
+Track token usage, cost, and duration across every Claude Code session. Choose between a **terminal-native TUI** or a **browser dashboard** — your preference is saved automatically.
 
 ![history dashboard](assets/dashboard-preview.png)
 
@@ -83,12 +83,58 @@ Session history is **enabled by default** on setup. Each session records:
 **Commands:**
 
 ```bash
-claude-statusline history          # Open the analytics dashboard
-claude-statusline enable-history   # Enable session tracking
-claude-statusline disable-history  # Disable session tracking
+claude-statusline history                   # Open dashboard in saved mode (default: web)
+claude-statusline history --mode terminal   # Switch to terminal TUI (persisted)
+claude-statusline history --mode web        # Switch to browser dashboard (persisted)
+claude-statusline enable-history            # Enable session tracking
+claude-statusline disable-history           # Disable session tracking
 ```
 
-Data is stored at `~/.claude/statusline-history.jsonl`. The dashboard opens in your browser and supports project filtering and light/dark theme toggle.
+Data is stored at `~/.claude/statusline-history.jsonl`.
+
+### Terminal TUI
+
+`--mode terminal` opens an interactive full-screen dashboard directly in your terminal — no browser required. Requires the native Rust binary (falls back to web dashboard with a warning if unavailable).
+
+```
+┌─ claude-statusline history ──────────────────────────────────────────────┐
+│ Sessions: 42   Tokens: 8.3M   Cost: $12.47                               │
+└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Filter: [All Projects ▾]                                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Project              Model               Started          Dur   Tok   Cost│
+│                                                                           │
+│> my-web-app           claude-sonnet-4-6   2026-04-02 14:  32m   842k  $2.14│
+│  cli-tool             claude-opus-4-6     2026-04-01 09:  1h4m  1.2M  $5.60│
+│  data-pipeline        claude-haiku-4-5    2026-03-31 17:  18m   220k  $0.44│
+│  my-web-app           claude-sonnet-4-6   2026-03-30 11:  45m   990k  $2.89│
+│  api-server           claude-sonnet-4-6   2026-03-29 08:  2h1m  2.1M  $8.33│
+│                                                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ up/down or j/k: move   f: filter   Enter: apply   Esc: close   q: quit   │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Press `f` to open the project filter popup:
+
+```
+              ┌─ Filter by Project ──────────┐
+              │ ██ All Projects ██           │
+              │   api-server                 │
+              │   cli-tool                   │
+              │   data-pipeline              │
+              │   my-web-app                 │
+              └──────────────────────────────┘
+```
+
+Rows are color-coded by exit reason: green = normal, yellow = interrupted, orange = pending.
+
+### Web Dashboard
+
+`--mode web` (the default) opens a browser-based dashboard with project filtering and light/dark theme toggle.
 
 ---
 
@@ -120,7 +166,7 @@ See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform 
 | Subagent counter | Counts active agents from todos dir | — |
 | Session tokens | Real-time via JSONL offset cache, split I/O (`X↓ Y↑`) | Stale stdin snapshot or none |
 | Session commits | Tracks git commits made this session | — |
-| Session history | Analytics dashboard with per-project filtering, zero dependencies | — |
+| Session history | Terminal TUI + browser dashboard, per-project filtering, zero dependencies | — |
 
 ---
 

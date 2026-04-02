@@ -8,7 +8,7 @@ This file provides guidance to any AI agent when working with code in this repos
 - `npm test -- --testPathPattern=setup` — run a single test file
 - `node node_modules/jest/bin/jest.js` — run Jest directly (use if `npm test` fails with permission error)
 - `cargo build --release` — build the Rust binary locally (requires Rust toolchain)
-- `cargo test` — run Rust unit tests (63 tests in `src/main.rs` and `src/history.rs`)
+- `cargo test` — run Rust unit tests (68 tests in `tests/rust_unit/`)
 - `claude-statusline setup` — configure ~/.claude/settings.json
 - `claude-statusline uninstall` — remove from settings.json
 - `npm install -g @alyibrahim/claude-statusline` — install globally
@@ -67,6 +67,6 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 
 ## Tests
 
-41 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`.
+46 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
-63 Rust tests inline in `src/main.rs` and `src/history.rs`. Run with `cargo test`.
+68 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (56), `history_tests.rs` (7), `history_tui_tests.rs` (5). Run with `cargo test`.

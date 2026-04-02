@@ -52,7 +52,7 @@
 
 ### 5.1. CI (`ci.yml`)
 - **Trigger:** Every push and pull request to `main`.
-- **Purpose:** Runs the Jest test suite (`npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (63 unit tests) is run separately per-platform as part of the release workflow.
+- **Purpose:** Runs the Jest test suite (`npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (68 unit tests) is run separately per-platform as part of the release workflow.
 
 ### 5.2. Release (`release.yml`)
 - **Trigger:** Any tag matching `v*` pushed to the repository.

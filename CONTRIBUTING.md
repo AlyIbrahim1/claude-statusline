@@ -28,10 +28,10 @@ Changes to one half do not require touching the other.
 ## Running Tests
 
 ```bash
-# JavaScript tests (41 tests)
+# JavaScript tests (46 tests)
 npm test
 
-# Rust tests (63 tests)
+# Rust tests (68 tests)
 cargo test
 ```
 
