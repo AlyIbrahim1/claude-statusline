@@ -1,7 +1,9 @@
 <div align="center">
 
-<img src=".github/assets/logo-light.svg#gh-light-mode-only" alt="claude-statusline" width="600">
-<img src=".github/assets/logo-dark.svg#gh-dark-mode-only" alt="claude-statusline" width="600">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/assets/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/assets/logo-light.svg" alt="claude-statusline" width="600">
+</picture>
 
 [![CI](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml/badge.svg)](https://github.com/AlyIbrahim1/claude-statusline/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@alyibrahim/claude-statusline)](https://www.npmjs.com/package/@alyibrahim/claude-statusline)
