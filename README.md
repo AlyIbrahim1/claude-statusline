@@ -92,6 +92,18 @@ claude-statusline disable-history           # Disable session tracking
 
 Data is stored at `~/.claude/statusline-history.jsonl`.
 
+### Claude Code slash commands
+
+History commands are also available directly inside Claude Code as slash commands:
+
+- `/history`
+- `/history-enable`
+- `/history-disable`
+- `/history-mode <web|terminal>`
+
+Project contributors get these from the repo at `.claude/commands/`.
+Global npm installs copy them to `~/.claude/commands/` automatically.
+
 ### Terminal TUI
 
 `--mode terminal` opens an interactive full-screen dashboard directly in your terminal — no browser required. Requires the native Rust binary (falls back to web dashboard with a warning if unavailable).
@@ -193,6 +205,8 @@ npm uninstall -g @alyibrahim/claude-statusline
 ```
 
 > Always run `claude-statusline uninstall` first — it removes the `statusLine` entry from `~/.claude/settings.json` before the files are deleted.
+
+`npm uninstall -g @alyibrahim/claude-statusline` also removes the four history slash command files installed by this package from `~/.claude/commands/`, without touching other custom commands.
 
 ---
 

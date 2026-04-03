@@ -22,7 +22,8 @@
 - **Subscription Awareness:** Intelligent toggling between usage/reset timers (Pro/Max plans) and direct API costs based on user subscription type.
 - **Context Bar Normalization:** Calculates "usable %" by factoring out the 16.5% auto-compact buffer.
 - **Session History:** Tracks session start and end events using Claude Code hooks, storing metrics in an append-only JSONL file at `~/.claude/statusline-history.jsonl`. History tracking is **enabled by default** on setup and can be toggled via `enable-history` / `disable-history` CLI commands.
-- **History Dashboard:** Running `claude-statusline history` generates a self-contained HTML dashboard and opens it in the browser. It displays an interactive session log with per-project filtering, summary stats (total sessions, tokens in/out, total spend), light/dark theme toggle, and per-row detail for model, duration, cost, and exit reason.
+- **History Dashboard (Web + Terminal):** Running `claude-statusline history` opens history in the user's saved mode. Web mode generates a self-contained HTML dashboard in the browser with project filtering, summary stats (total sessions, tokens in/out, total spend), light/dark theme toggle, and per-row detail for model, duration, cost, and exit reason. Terminal mode opens an interactive full-screen TUI.
+- **Claude Slash Commands:** History management is also available as Claude Code slash commands (`/history`, `/history-enable`, `/history-disable`, `/history-mode <web|terminal>`). Command files are provided in `.claude/commands/` for project contributors and installed to `~/.claude/commands/` on global npm install.
 
 ### 4.2. Developer Ergonomics
 - **Extrinsic State Tracking:** 
@@ -45,8 +46,15 @@
   - `claude-statusline setup` — atomic update of `~/.claude/settings.json`; enables history hooks by default.
   - `claude-statusline uninstall` — strips the `statusLine` key without affecting other settings.
   - `claude-statusline enable-history` / `disable-history` — toggles `SessionStart` and `SessionEnd` hooks in settings.
-  - `claude-statusline history` — generates and opens the session history dashboard in the browser.
+  - `claude-statusline history` — opens history in saved mode (`web` by default).
+  - `claude-statusline history --mode web|terminal` — switches mode and persists it.
+- **Claude Code Slash Commands:**
+  - `/history` — opens history in the saved dashboard mode.
+  - `/history-enable` / `/history-disable` — toggles history tracking.
+  - `/history-mode <web|terminal>` — changes persisted dashboard mode.
 - **History Tracking:** Triggered via Claude Code's native `SessionStart` / `SessionEnd` hooks, enabled automatically on first setup.
+- **Mode Persistence:** History mode is persisted in Claude settings (`dashboardMode`) and reused on subsequent `history` invocations.
+- **Install/Uninstall Command Lifecycle:** Global installs copy project slash command files into `~/.claude/commands/`. Uninstall removes only the package-owned history command files and leaves unrelated user commands untouched.
 
 ## 5. GitHub Workflows
 

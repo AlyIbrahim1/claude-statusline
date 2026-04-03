@@ -8,7 +8,7 @@ Before your first pull request is merged, you'll be asked to sign the [CLA](CLA.
 
 ## Development Setup
 
-**Prerequisites:** Node.js 18+, Rust toolchain (for binary changes only)
+**Prerequisites:** Node.js 16+ (18+ recommended), Rust toolchain (for binary changes only)
 
 ```bash
 git clone https://github.com/AlyIbrahim1/claude-statusline.git
@@ -28,8 +28,11 @@ Changes to one half do not require touching the other.
 ## Running Tests
 
 ```bash
-# JavaScript tests (46 tests)
+# JavaScript tests (53 tests)
 npm test
+
+# If npm test fails with "jest: Permission denied"
+node node_modules/jest/bin/jest.js
 
 # Rust tests (68 tests)
 cargo test
@@ -42,6 +45,18 @@ All tests must pass before a PR can be merged.
 ### JavaScript changes
 
 Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly.
+
+If your change touches history slash commands:
+
+- Source slash command files live in `.claude/commands/`.
+- `scripts/postinstall.js` copies those files into `~/.claude/commands/` during global install.
+- `scripts/preuninstall.js` removes only package-owned history command files and must not remove unrelated user commands.
+- Add or update tests in `tests/slash-commands.test.js` for lifecycle behavior changes.
+
+If your change touches history dashboard mode behavior:
+
+- Keep `claude-statusline history --mode web|terminal` semantics intact.
+- Ensure mode persistence via `dashboardMode` in Claude settings remains backward compatible.
 
 ### Rust changes
 
