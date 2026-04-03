@@ -66,7 +66,7 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 Track token usage, cost, and duration across every Claude Code session. Choose between a **terminal-native TUI** or a **browser dashboard** — your preference is saved automatically.
 
-![history dashboard](assets/dashboard-preview.png)
+![history dashboard](https://raw.githubusercontent.com/AlyIbrahim1/claude-statusline/main/.github/assets/dashboard-preview.png)
 
 Session history is **enabled by default** on setup. Each session records:
 
