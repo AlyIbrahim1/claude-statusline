@@ -13,6 +13,7 @@ claude-statusline <command>
 Commands:
   setup            Configure ~/.claude/settings.json to use this statusline
   uninstall        Remove this statusline from ~/.claude/settings.json
+  download-binary  Download the native binary for this platform
   enable-history   Enable tracking session analytics to JSONL (default on setup)
   disable-history  Remove history tracking hooks from Claude settings
   history          Open the session analytics dashboard
@@ -116,6 +117,16 @@ if (cmd === 'setup') {
     process.exit(1);
   }
   console.log(`✓ Removed statusline from ${getSettingsPath()}`);
+
+} else if (cmd === 'download-binary') {
+  const { downloadBinary } = require('../scripts/download-binary');
+  const result = downloadBinary();
+  if (!result.ok) {
+    console.error('Error:', result.error);
+    process.exit(1);
+  }
+  console.log(`\n✓ Binary installed at ${result.binaryPath}`);
+  console.log('  Run claude-statusline setup to update your settings to use it.\n');
 
 } else if (cmd === 'enable-history') {
   const result = toggleHistory(true);
