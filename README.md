@@ -34,6 +34,13 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 > If auto-setup didn't run: `claude-statusline setup`
 
+**Plugin install (Claude Code marketplace):** Search for `claude-statusline` in the Claude Code plugin browser. The plugin auto-configures on first session start. To get the native Rust binary after a plugin install, run:
+
+```bash
+claude-statusline download-binary
+claude-statusline setup
+```
+
 ---
 
 <div align="center">
@@ -95,15 +102,17 @@ Data is stored at `~/.claude/statusline-history.jsonl`.
 
 ### Claude Code slash commands
 
-History commands are also available directly inside Claude Code as slash commands:
+Commands are also available directly inside Claude Code as slash commands:
 
 - `/history`
 - `/history-enable`
 - `/history-disable`
 - `/history-mode <web|terminal>`
+- `/download-binary`
 
 Project contributors get these from the repo at `.claude/commands/`.
 Global npm installs copy them to `~/.claude/commands/` automatically.
+Plugin installs include them via the plugin's `commands/` directory.
 
 ### Terminal TUI
 
@@ -158,6 +167,8 @@ Rows are color-coded by exit reason: green = normal, yellow = interrupted, orang
 </div>
 
 Pre-built Rust binaries are available for **Linux x64/arm64, macOS x64/arm64, and Windows x64**. All Linux distributions (Ubuntu, Arch, Fedora, etc.) are supported. Any other platform falls back to the JS implementation automatically — no action needed.
+
+Plugin installs skip `npm install`, so the binary is not downloaded automatically. Run `claude-statusline download-binary` once to get it.
 
 See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform install instructions, and feature availability table.
 
