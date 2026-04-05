@@ -1,0 +1,24 @@
+{
+  "name": "claude-statusline",
+  "owner": {
+    "name": "Aly Lotfy"
+  },
+  "metadata": {
+    "description": "Fast Rust-powered statusline for Claude Code — context, git, tokens, cost, and session history."
+  },
+  "plugins": [
+    {
+      "name": "claude-statusline",
+      "source": "./",
+      "description": "Always-visible statusline — context bar, git branch, tokens, cost. Rust binary (~5ms startup), zero dependencies.",
+      "version": "1.5.1",
+      "author": {
+        "name": "Aly Lotfy"
+      },
+      "homepage": "https://github.com/AlyIbrahim1/claude-statusline",
+      "repository": "https://github.com/AlyIbrahim1/claude-statusline",
+      "license": "MIT",
+      "keywords": ["statusline", "context", "git", "tokens", "cost", "rate-limits", "session-history"]
+    }
+  ]
+}
