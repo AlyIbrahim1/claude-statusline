@@ -19,7 +19,11 @@ function uninstall() {
 
   // Also strip our hooks if they exist
   const { updateHooks } = require('./setup');
-  updateHooks(settings, '', false);
+  try {
+    updateHooks(settings, false);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 
   try {
     atomicWrite(settingsPath, settings);

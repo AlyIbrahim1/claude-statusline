@@ -65,4 +65,67 @@ describe('uninstall()', () => {
     expect(written.hooks).toBeUndefined();
     expect(written.model).toBe('sonnet');
   });
+
+  test('removes autosetup hook from settings.json', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const packageRoot = path.resolve(__dirname, '..');
+    const autosetupCmd = `node "${path.join(packageRoot, 'scripts', 'plugin-autosetup.js')}"`;
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: autosetupCmd }] }]
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks).toBeUndefined();
+    expect(written.model).toBe('sonnet');
+  });
+
+  test('removes legacy autosetup hook from old install root', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const oldCmd = 'node "/opt/old/claude-statusline/scripts/plugin-autosetup.js"';
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: oldCmd }] }]
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks).toBeUndefined();
+    expect(written.model).toBe('sonnet');
+  });
+
+  test('preserves unrelated plugin-autosetup hook command', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const unrelatedCmd = 'node "/opt/other-plugin/scripts/plugin-autosetup.js"';
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: unrelatedCmd }] }]
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks.SessionStart[0].hooks[0].command).toBe(unrelatedCmd);
+    expect(written.model).toBe('sonnet');
+  });
+
+  test('returns error when hooks config contains invalid JSON', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ model: 'sonnet', hooks: {} }, null, 2));
+
+    const realReadFileSync = fs.readFileSync;
+    jest.spyOn(fs, 'readFileSync').mockImplementation((filePath, encoding) => {
+      if (String(filePath).endsWith(path.join('hooks', 'hooks.json'))) {
+        return '{ invalid json }';
+      }
+      return realReadFileSync(filePath, encoding);
+    });
+
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Hook configuration error/i);
+  });
 });
