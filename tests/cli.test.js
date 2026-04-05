@@ -19,6 +19,7 @@ describe('cli.js', () => {
     const r = run([]);
     expect(r.status).toBe(0);
     expect(r.stdout.toString()).toContain('claude-statusline <command>');
+    expect(r.stdout.toString()).toContain('download-binary');
   });
 
   test('unknown command: prints error and exits 1', () => {
