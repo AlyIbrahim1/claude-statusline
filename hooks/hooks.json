@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_NODE_EXEC} \"${CLAUDE_PLUGIN_ROOT}/statusline.js\" hook start"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_NODE_EXEC} \"${CLAUDE_PLUGIN_ROOT}/statusline.js\" hook end"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -118,7 +118,24 @@ describe('setup()', () => {
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
     expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
+      expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command)
+        .toContain(`"${process.execPath}"`);
+      expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command.startsWith('node ')).toBe(false);
   });
+
+    test('returns error when hooks config contains invalid JSON', () => {
+      const realReadFileSync = fs.readFileSync;
+      jest.spyOn(fs, 'readFileSync').mockImplementation((filePath, encoding) => {
+        if (String(filePath).endsWith(path.join('hooks', 'hooks.json'))) {
+          return '{ invalid json }';
+        }
+        return realReadFileSync(filePath, encoding);
+      });
+
+      const result = load()();
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/Hook configuration error/i);
+    });
 });
 
 describe('toggleHistory()', () => {
@@ -156,6 +173,15 @@ describe('toggleHistory()', () => {
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
     expect(settings.hooks).toBeUndefined();
   });
+
+    test('enable writes hook commands with absolute node executable path', () => {
+      const result = load()(true);
+      expect(result.ok).toBe(true);
+      const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
+      const startCommand = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command || '';
+      expect(startCommand).toContain(`"${process.execPath}"`);
+      expect(startCommand.startsWith('node ')).toBe(false);
+    });
 
   test('disable preserves unrelated hooks', () => {
     const settingsPath = path.join(tmpDir, 'settings.json');

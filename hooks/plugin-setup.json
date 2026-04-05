@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_NODE_EXEC} \"${CLAUDE_PLUGIN_ROOT}/scripts/plugin-autosetup.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

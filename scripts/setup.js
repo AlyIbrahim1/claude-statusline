@@ -6,6 +6,35 @@ const { getSettingsPath, atomicWrite } = config;
 
 const UNSAFE_CHARS = /["`$!()\\]/;
 
+function buildNodeExecCommand() {
+  return `"${process.execPath}"`;
+}
+
+function resolveHooksFromFile(filePath, replacements) {
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    const wrapped = new Error(`Hook configuration error in ${path.basename(filePath)}: ${err.message}`);
+    wrapped.code = 'HOOK_CONFIG_ERROR';
+    throw wrapped;
+  }
+
+  const hooks = parsed && parsed.hooks;
+  if (!hooks || typeof hooks !== 'object') {
+    const wrapped = new Error(`Hook configuration error in ${path.basename(filePath)}: missing hooks object`);
+    wrapped.code = 'HOOK_CONFIG_ERROR';
+    throw wrapped;
+  }
+
+  let serialized = JSON.stringify(hooks);
+  for (const [token, value] of Object.entries(replacements)) {
+    serialized = serialized.replace(new RegExp(`\\$\\{${token}\\}`, 'g'), value);
+  }
+
+  return JSON.parse(serialized);
+}
+
 function setup({ force = false } = {}) {
   // CI guard: skip during local/CI npm installs unless forced (e.g. from CLI)
   if (!force && process.env.npm_config_global !== 'true') {
@@ -38,7 +67,11 @@ function setup({ force = false } = {}) {
     : `"${process.execPath}" "${scriptPath}"`;
   settings.statusLine = { type: 'command', command };
 
-  updateHooks(settings, command, true);
+  try {
+    updateHooks(settings, true, { nodeExecCommand: buildNodeExecCommand() });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
 
@@ -51,31 +84,74 @@ function setup({ force = false } = {}) {
   return { ok: true, settingsPath };
 }
 
-function updateHooks(settings, command, enable) {
+function updateHooks(settings, enable, { nodeExecCommand = buildNodeExecCommand() } = {}) {
   if (!settings.hooks) settings.hooks = {};
-  
-  const startCmd = `${command} hook start`;
-  const endCmd = `${command} hook end`;
 
-  function toggleHook(hookName, cmdString) {
-    if (!settings.hooks[hookName]) settings.hooks[hookName] = [];
-    // Remove any existing statusline hook entries (both old and new format)
-    settings.hooks[hookName] = settings.hooks[hookName].filter(h => {
-      if (h.hooks) {
-        return !h.hooks.some(inner => inner.command && (inner.command.endsWith(' hook start') || inner.command.endsWith(' hook end')));
-      }
-      return !(h.command && (h.command.endsWith(' hook start') || h.command.endsWith(' hook end')));
+  const packageRoot = path.resolve(__dirname, '..');
+  const escapedRoot = packageRoot.replace(/\\/g, '\\\\');
+  const escapedNodeExec = nodeExecCommand
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+
+  // When installing, only add history hooks from hooks.json.
+  // When removing, read all our hooks files so every hook we may have written gets cleaned up.
+  const installFile = path.join(packageRoot, 'hooks', 'hooks.json');
+  const allFiles = [
+    installFile,
+    path.join(packageRoot, 'hooks', 'plugin-setup.json'),
+  ].filter(f => fs.existsSync(f));
+  const filesToProcess = enable ? [installFile] : allFiles;
+
+  // Collect every resolved command across all our hooks files for exact-match removal.
+  const ourCommands = new Set();
+  for (const f of allFiles) {
+    const resolved = resolveHooksFromFile(f, {
+      CLAUDE_PLUGIN_ROOT: escapedRoot,
+      CLAUDE_NODE_EXEC: escapedNodeExec,
     });
-    if (enable) {
-      settings.hooks[hookName].push({ matcher: '', hooks: [{ type: 'command', command: cmdString }] });
-    }
-    if (settings.hooks[hookName].length === 0) {
-      delete settings.hooks[hookName];
+    for (const entries of Object.values(resolved)) {
+      for (const entry of entries) {
+        for (const hook of (entry.hooks || [])) {
+          if (hook.command) ourCommands.add(hook.command);
+        }
+      }
     }
   }
 
-  toggleHook('SessionStart', startCmd);
-  toggleHook('SessionEnd', endCmd);
+  for (const f of filesToProcess) {
+    const resolvedHooks = resolveHooksFromFile(f, {
+      CLAUDE_PLUGIN_ROOT: escapedRoot,
+      CLAUDE_NODE_EXEC: escapedNodeExec,
+    });
+
+    for (const [event, entries] of Object.entries(resolvedHooks)) {
+      if (!settings.hooks[event]) settings.hooks[event] = [];
+      settings.hooks[event] = settings.hooks[event].filter(h => {
+        const isLegacyAutosetup = cmd => {
+          if (!cmd) return false;
+          const hasScript = /scripts[\\/]+plugin-autosetup\.js/.test(cmd);
+          const hasOwnedMarker = /claude-statusline|CLAUDE_PLUGIN_ROOT/i.test(cmd);
+          return hasScript && hasOwnedMarker;
+        };
+        const isOurs = inner => inner.command && (
+          // Suffix match — catches hooks written by older package versions
+          inner.command.endsWith(' hook start') || inner.command.endsWith(' hook end') ||
+          // Exact match — catches current hooks including plugin-setup entries
+          ourCommands.has(inner.command) ||
+          // Legacy autosetup fallback — catches prior install roots
+          isLegacyAutosetup(inner.command)
+        );
+        if (h.hooks) return !h.hooks.some(isOurs);
+        return !isOurs(h);
+      });
+      if (enable) {
+        settings.hooks[event].push(...entries);
+      }
+      if (settings.hooks[event].length === 0) {
+        delete settings.hooks[event];
+      }
+    }
+  }
 
   if (Object.keys(settings.hooks).length === 0) {
     delete settings.hooks;
@@ -83,11 +159,6 @@ function updateHooks(settings, command, enable) {
 }
 
 function toggleHistory(enable) {
-  const scriptPath = path.resolve(__dirname, '../statusline.js');
-  const binaryPath = config.resolveBinary();
-  const safeBinary = binaryPath && !UNSAFE_CHARS.test(binaryPath) ? binaryPath : null;
-  const command = safeBinary ? `"${safeBinary}"` : `"${process.execPath}" "${scriptPath}"`;
-
   const settingsPath = getSettingsPath();
   let settings = {};
   if (fs.existsSync(settingsPath)) {
@@ -98,7 +169,11 @@ function toggleHistory(enable) {
     }
   }
 
-  updateHooks(settings, command, enable);
+  try {
+    updateHooks(settings, enable, { nodeExecCommand: buildNodeExecCommand() });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 
   try {
     atomicWrite(settingsPath, settings);

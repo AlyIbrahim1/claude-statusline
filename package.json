@@ -46,6 +46,7 @@
     "statusline.js",
     "bin/",
     "scripts/",
+    "hooks/",
     "README.md"
   ],
   "license": "MIT",
