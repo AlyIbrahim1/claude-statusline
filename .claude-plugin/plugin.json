@@ -1,7 +1,7 @@
 {
   "name": "claude-statusline",
   "description": "Always-visible statusline for Claude Code — context, git, tokens, cost. Rust binary, zero dependencies.",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "author": {
     "name": "Aly Lotfy"
   },

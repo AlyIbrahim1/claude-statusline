@@ -11,7 +11,7 @@
       "name": "claude-statusline",
       "source": "./",
       "description": "Always-visible statusline — context bar, git branch, tokens, cost. Rust binary (~5ms startup), zero dependencies.",
-      "version": "1.5.1",
+      "version": "1.5.2",
       "author": {
         "name": "Aly Lotfy"
       },
