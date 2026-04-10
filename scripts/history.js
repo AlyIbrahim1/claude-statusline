@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const open = require('open');
+const { normalizeProjectSlug } = require('./slug-utils');
 
 const JSONL_PATH = path.join(
   process.env.HOME || process.env.USERPROFILE || os.homedir(),
@@ -65,7 +66,7 @@ function handleHookEnd() {
 
     const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-    const slug = projectDir.replace(/[/\\]/g, '-');
+    const slug = normalizeProjectSlug(projectDir);
     const projectsDir = path.join(home, '.claude', 'projects', slug);
 
     // Read session stats from the most recently modified JSONL in the project dir

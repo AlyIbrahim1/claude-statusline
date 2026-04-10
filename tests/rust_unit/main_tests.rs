@@ -350,6 +350,21 @@ fn read_session_tokens_parses_jsonl() {
 }
 
 #[test]
+fn read_session_tokens_normalizes_backslash_slug() {
+    let tmp = std::env::temp_dir().join(format!("sl_tok_test_backslash_{}", std::process::id()));
+    let slug = "C:-work-repo";
+    let projects_dir = tmp.join("projects").join(slug);
+    std::fs::create_dir_all(&projects_dir).unwrap();
+    let session = "testsession-backslash";
+    let jsonl = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
+    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
+    let result = read_session_tokens(&tmp, session, "C:\\work\\repo").unwrap();
+    assert_eq!(result.total_in, 1);
+    assert_eq!(result.total_out, 2);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
 fn read_session_tokens_uses_offset_cache() {
     let tmp = std::env::temp_dir().join(format!("sl_tok_test3_{}", std::process::id()));
     let slug = "-tmp-myproject";

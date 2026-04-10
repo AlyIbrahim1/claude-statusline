@@ -151,7 +151,7 @@ pub fn handle_hook_end() {
     let home = env::var("HOME")
         .or_else(|_| env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    let slug = project_dir.replace('/', "-").replace('\\', "-");
+    let slug = project_dir.replace(['/', '\\'], "-");
     let projects_dir = PathBuf::from(&home).join(".claude").join("projects").join(&slug);
 
     let mut newest_file: Option<PathBuf> = None;
@@ -192,6 +192,7 @@ pub fn handle_hook_end() {
                     if entry["type"] == "assistant" {
                         if let Some(usage) = entry["message"]["usage"].as_object() {
                             total_in += usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
+                                // Keep parity with JS: Math.round(cache_read_input_tokens * 0.1)
                                 + (usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0).saturating_add(5) / 10)
                                 + usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
                             total_out += usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);

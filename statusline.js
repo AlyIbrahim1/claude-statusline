@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync, execFileSync } = require('child_process');
+const { normalizeProjectSlug } = require('./scripts/slug-utils');
 
 const cmd = process.argv[2];
 if (cmd === 'history') {
@@ -30,7 +31,7 @@ if (cmd === 'history') {
 // Returns { totalIn, totalOut } or null on any error.
 function readSessionTokens(claudeDir, session, absDir) {
   if (!session) return null;
-  const slug = absDir.replace(/\//g, '-');
+  const slug = normalizeProjectSlug(absDir);
   const jsonlPath = path.join(claudeDir, 'projects', slug, `${session}.jsonl`);
   const cachePath = path.join(claudeDir, `statusline-tokcache-${session}.json`);
   try {
