@@ -56,19 +56,17 @@ function main() {
   }
 
   for (const [name, version] of Object.entries(optionalDeps)) {
-    const lockPkg = lock.packages && lock.packages[`node_modules/${name}`];
-    if (!lockPkg) {
-      errors.push(`package-lock.json missing node_modules entry for ${name}`);
-      continue;
-    }
-    if (lockPkg.version !== version) {
-      errors.push(`package-lock.json entry for ${name} is ${lockPkg.version}, expected ${version}`);
-    }
     const lockRootVersion = lock.packages && lock.packages[''] && lock.packages[''].optionalDependencies
       ? lock.packages[''].optionalDependencies[name]
       : undefined;
     if (lockRootVersion !== version) {
       errors.push(`package-lock.json root optionalDependencies[${name}] is ${lockRootVersion}, expected ${version}`);
+    }
+    // node_modules entries are only resolved once the package exists on npm.
+    // Pre-publish they contain only { optional: true } — skip the version check in that case.
+    const lockPkg = lock.packages && lock.packages[`node_modules/${name}`];
+    if (lockPkg && lockPkg.version !== undefined && lockPkg.version !== version) {
+      errors.push(`package-lock.json node_modules entry for ${name} is ${lockPkg.version}, expected ${version}`);
     }
   }
 
