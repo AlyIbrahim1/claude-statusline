@@ -37,7 +37,8 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "preuninstall": "node scripts/preuninstall.js",
-    "test": "jest"
+    "test": "jest",
+    "check-versions": "node scripts/check-version-alignment.js"
   },
   "jest": {
     "testPathIgnorePatterns": ["/node_modules/", "/.worktrees/"]

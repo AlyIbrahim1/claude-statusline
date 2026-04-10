@@ -34,10 +34,11 @@ Settings are written to `~/.claude/settings.json` or `$CLAUDE_CONFIG_DIR/setting
 
 ## Version bumps
 
-When bumping the version, **both** `package.json` (including the ones in `/packages`) and `Cargo.toml` must be updated to the same version. Then regenerate `package-lock.json`:
+When bumping the version, `package.json`, `Cargo.toml`, `.claude-plugin/marketplace.json`, and `.claude-plugin/plugin.json` must **ALL** be updated to the same version. Then regenerate both `package-lock.json` and `Cargo.lock`.
 
 ```bash
 npm install --package-lock-only
+npm run check-versions
 ```
 
 The lock file pins the platform-specific optionalDependencies (`@alyibrahim/claude-statusline-*`) to exact versions. If `package.json` and `package-lock.json` are out of sync, CI fails on `npm ci` before any tests run.
@@ -54,7 +55,7 @@ Tagging a version triggers the CI pipeline which publishes to npm automatically:
 git tag v1.x.x && git push origin main --tags
 ```
 
-Before tagging: bump version in both `package.json` (including the ones in `/packages`) and `Cargo.toml`, regenerate `package-lock.json`, run both test suites (`npm test` and `cargo test`), and check `README.md` for stale content.
+Before tagging: bump version in both `package.json` (including the ones in `/packages`) and `Cargo.toml`, regenerate `package-lock.json`, run `npm run check-versions`, run both test suites (`npm test` and `cargo test`), and check `README.md` for stale content.
 
 ## Conventions
 
@@ -70,3 +71,9 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 46 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
 68 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (56), `history_tests.rs` (7), `history_tui_tests.rs` (5). Run with `cargo test`.
+
+## Commits
+
+- **NEVER** add co-author notes.
+- **Always** try to use atomic commit principles by separating the changes into groups.
+- **Always** make sure that the code passed all tests and that the versions are properly aligned before committing.
