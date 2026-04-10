@@ -23,7 +23,7 @@ Commands:
 const TERMINAL_FALLBACK_WARNING = [
   '[claude-statusline] terminal mode requires the native binary.',
   'Falling back to web dashboard. To install the binary, run:',
-  '  npm install -g @alyibrahim/claude-statusline'
+  '  claude-statusline download-binary'
 ].join('\n');
 
 function parseHistoryMode(args) {
