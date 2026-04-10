@@ -5,6 +5,7 @@ const config = require('./config');
 const { getSettingsPath, atomicWrite } = config;
 
 const UNSAFE_CHARS = /["`$!()\\]/;
+const HOOK_MARKER = 'claude-statusline-owned-v1';
 
 function buildNodeExecCommand() {
   return `"${process.execPath}"`;
@@ -108,6 +109,7 @@ function updateHooks(settings, enable, { nodeExecCommand = buildNodeExecCommand(
     const resolved = resolveHooksFromFile(f, {
       CLAUDE_PLUGIN_ROOT: escapedRoot,
       CLAUDE_NODE_EXEC: escapedNodeExec,
+      HOOK_MARKER,
     });
     for (const entries of Object.values(resolved)) {
       for (const entry of entries) {
@@ -122,6 +124,7 @@ function updateHooks(settings, enable, { nodeExecCommand = buildNodeExecCommand(
     const resolvedHooks = resolveHooksFromFile(f, {
       CLAUDE_PLUGIN_ROOT: escapedRoot,
       CLAUDE_NODE_EXEC: escapedNodeExec,
+      HOOK_MARKER,
     });
 
     for (const [event, entries] of Object.entries(resolvedHooks)) {
@@ -133,11 +136,21 @@ function updateHooks(settings, enable, { nodeExecCommand = buildNodeExecCommand(
           const hasOwnedMarker = /claude-statusline|CLAUDE_PLUGIN_ROOT/i.test(cmd);
           return hasScript && hasOwnedMarker;
         };
+        const hasOwnedMarker = cmd => cmd && cmd.includes(`--marker=${HOOK_MARKER}`);
+        const isLegacyStatuslineHook = cmd => {
+          if (!cmd) return false;
+          const isHookSuffix = cmd.endsWith(' hook start') || cmd.endsWith(' hook end');
+          if (!isHookSuffix) return false;
+          // Keep backward compatibility with older commands while avoiding broad suffix-only matches.
+          return /(?:^|\s)(?:statusline|claude-statusline)(?:\s|$)/i.test(cmd);
+        };
         const isOurs = inner => inner.command && (
-          // Suffix match — catches hooks written by older package versions
-          inner.command.endsWith(' hook start') || inner.command.endsWith(' hook end') ||
+          // Marker match — canonical ownership check for new installs.
+          hasOwnedMarker(inner.command) ||
           // Exact match — catches current hooks including plugin-setup entries
           ourCommands.has(inner.command) ||
+          // Backward-compatible statusline suffix match for older package versions.
+          isLegacyStatuslineHook(inner.command) ||
           // Legacy autosetup fallback — catches prior install roots
           isLegacyAutosetup(inner.command)
         );

@@ -118,6 +118,7 @@ describe('setup()', () => {
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
     expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
+    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('--marker=claude-statusline-owned-v1');
       expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command)
         .toContain(`"${process.execPath}"`);
       expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command.startsWith('node ')).toBe(false);
@@ -164,6 +165,7 @@ describe('toggleHistory()', () => {
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
     expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
+    expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('--marker=claude-statusline-owned-v1');
   });
 
   test('disable removes SessionStart and SessionEnd hooks', () => {
@@ -194,6 +196,18 @@ describe('toggleHistory()', () => {
     load()(false);
     const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(written.hooks?.PreToolUse).toBeDefined();
+    expect(written.hooks?.SessionStart).toBeDefined();
+  });
+
+  test('disable removes legacy statusline hook commands', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: 'statusline hook start' }] }]
+      }
+    }, null, 2));
+    load()(false);
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(written.hooks?.SessionStart).toBeUndefined();
   });
 
