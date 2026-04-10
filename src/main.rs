@@ -385,6 +385,7 @@ fn read_session_tokens(
                             .get("input_tokens")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0)
+                            // Keep parity with JS: Math.round(cache_read_input_tokens * 0.1)
                             + (usage
                                 .get("cache_read_input_tokens")
                                 .and_then(|v| v.as_u64())
