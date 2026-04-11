@@ -20,7 +20,7 @@ npm install
 
 Two independent halves that share only a settings path:
 
-- **Rust binary** (`src/main.rs`, `src/history.rs`) — the primary renderer. Pre-compiled per platform and distributed as optional npm packages.
+- **Rust binary** (`src/main.rs`, `src/history.rs`, `src/realtime.rs`, `src/realtime_paths.rs`, `src/status_model.rs`) — the primary renderer. Pre-compiled per platform and distributed as optional npm packages. `src/realtime.rs` implements the realtime event system (Unix sockets, state snapshots, terminal resize); `src/realtime_paths.rs` handles TTY slug derivation and realtime file paths; `src/status_model.rs` handles stdin JSON parsing. Realtime subcommands use `#[cfg(all(unix, not(test)))]` guards to prevent auto-spawning during `cargo test`, which would cause exponential process explosions.
 - **JS fallback** (`statusline.js`, `scripts/`) — invoked when no binary is found. Lifecycle scripts run at install/uninstall time.
 
 Changes to one half do not require touching the other.
@@ -28,15 +28,17 @@ Changes to one half do not require touching the other.
 ## Running Tests
 
 ```bash
-# JavaScript tests (53 tests)
+# JavaScript tests (102 tests)
 npm test
 
 # If npm test fails with "jest: Permission denied"
 node node_modules/jest/bin/jest.js
 
-# Rust tests (68 tests)
-cargo test
+# Rust tests (85 tests)
+cargo test -- --test-threads=1
 ```
+
+Rust tests mutate global env vars and must run single-threaded — omitting `--test-threads=1` will cause test failures or process explosions.
 
 All tests must pass before a PR can be merged.
 
@@ -44,7 +46,7 @@ All tests must pass before a PR can be merged.
 
 ### JavaScript changes
 
-Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly.
+Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly. `scripts/config.js` also exports `getRealtimePaths()` and `getRealtimeTtySlug()` for realtime path resolution; use these rather than constructing paths manually. `scripts/slug-utils.js` exports `normalizeProjectSlug()` for cross-platform project path normalization — use this if your change touches history or token cache code.
 
 If your change touches history slash commands:
 
@@ -60,14 +62,15 @@ If your change touches history dashboard mode behavior:
 
 ### Rust changes
 
-Edit `src/main.rs` or `src/history.rs`, then run `cargo build --release` to verify it compiles.
+Edit `src/main.rs`, `src/history.rs`, `src/realtime.rs`, `src/realtime_paths.rs`, or `src/status_model.rs` as needed, then run `cargo build --release` to verify it compiles. When editing realtime code, keep the `#[cfg(all(unix, not(test)))]` guards in place — they prevent the realtime renderer from auto-spawning during `cargo test`.
 
 ### Version bumps
 
-If your change warrants a version bump, update **both** `package.json` **and** `Cargo.toml` to the same version, then regenerate the lock file:
+If your change warrants a version bump, update all **four** manifest files to the same version: `package.json`, `Cargo.toml`, `.claude-plugin/marketplace.json`, and `.claude-plugin/plugin.json`. Then regenerate the lock file and validate alignment:
 
 ```bash
 npm install --package-lock-only
+npm run check-versions
 ```
 
 Also check `README.md` for any stale content before committing.

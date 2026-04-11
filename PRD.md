@@ -24,6 +24,7 @@
 - **Session History:** Tracks session start and end events using Claude Code hooks, storing metrics in an append-only JSONL file at `~/.claude/statusline-history.jsonl`. History tracking is **enabled by default** on setup and can be toggled via `enable-history` / `disable-history` CLI commands.
 - **History Dashboard (Web + Terminal):** Running `claude-statusline history` opens history in the user's saved mode. Web mode generates a self-contained HTML dashboard in the browser with project filtering, summary stats (total sessions, tokens in/out, total spend), light/dark theme toggle, and per-row detail for model, duration, cost, and exit reason. Terminal mode opens an interactive full-screen TUI.
 - **Claude Slash Commands:** History management is also available as Claude Code slash commands (`/history`, `/history-enable`, `/history-disable`, `/history-mode <web|terminal>`). Command files are provided in `.claude/commands/` for project contributors and installed to `~/.claude/commands/` on global npm install.
+- **Realtime State Sync (optional):** An optional background renderer process can be enabled per terminal via the `CLAUDE_STATUSLINE_REALTIME=1` environment variable (also accepts `"true"`/`"TRUE"`). When enabled, it auto-spawns on first render and maintains a per-TTY Unix socket and state file at `~/.claude/statusline-state-{tty_slug}.json`. The TTY slug is derived in priority order from `CLAUDE_STATUSLINE_TTY` → `TERM_SESSION_ID` → `pid-{PID}`. Each terminal session is fully isolated; a 5-minute heartbeat timeout auto-removes stale registry entries. Terminal resize events are handled via crossterm (Unix only). On Windows, the feature flag is silently ignored.
 
 ### 4.2. Developer Ergonomics
 - **Extrinsic State Tracking:** 
@@ -39,6 +40,7 @@
 - **Fail-safe Design:** 3-second stdin timeout guard; silently discards bad JSON to strictly guarantee Claude Code never crashes due to the statusline.
 - **Performance Optimizations:** A byte-offset cache (`~/.claude/statusline-tokcache-{session}.json`) avoids re-parsing the full token JSONL on each invocation, keeping latency flat as session length grows.
 - **Dependency Profile:** Zero runtime shell dependencies (no `jq`, `bc`).
+- **Realtime Renderer Isolation:** The realtime renderer runs as a completely separate process launched via the `realtime run` subcommand. It communicates with the main render path exclusively through Unix sockets and JSON state files, with no shared in-process state. Spawn calls are gated behind `#[cfg(not(test))]` guards to prevent test-suite spawn loops.
 
 ### 4.4. Lifecycle & Platform
 - **Installation:** Natively distributed as OS-specific npm packages (`@alyibrahim/claude-statusline-*`).
@@ -48,10 +50,14 @@
   - `claude-statusline enable-history` / `disable-history` — toggles `SessionStart` and `SessionEnd` hooks in settings.
   - `claude-statusline history` — opens history in saved mode (`web` by default).
   - `claude-statusline history --mode web|terminal` — switches mode and persists it.
+  - `claude-statusline download-binary` — downloads the pre-compiled native binary for plugin users who skip the npm install step.
+  - `claude-statusline realtime-status` — shows the current realtime renderer state and the socket/state file paths for the active terminal.
+  - `claude-statusline realtime-stop` — requests renderer shutdown for the current terminal session.
 - **Claude Code Slash Commands:**
   - `/history` — opens history in the saved dashboard mode.
   - `/history-enable` / `/history-disable` — toggles history tracking.
   - `/history-mode <web|terminal>` — changes persisted dashboard mode.
+  - `/download-binary` — downloads the native binary from within a Claude Code session (for plugin users).
 - **History Tracking:** Triggered via Claude Code's native `SessionStart` / `SessionEnd` hooks, enabled automatically on first setup.
 - **Mode Persistence:** History mode is persisted in Claude settings (`dashboardMode`) and reused on subsequent `history` invocations.
 - **Install/Uninstall Command Lifecycle:** Global installs copy project slash command files into `~/.claude/commands/`. Uninstall removes only the package-owned history command files and leaves unrelated user commands untouched.
@@ -60,7 +66,7 @@
 
 ### 5.1. CI (`ci.yml`)
 - **Trigger:** Every push and pull request to `main`.
-- **Purpose:** Runs the Jest test suite (`npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (68 unit tests) is run separately per-platform as part of the release workflow.
+- **Purpose:** Runs the Jest test suite (`npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (85 unit tests) is run separately per-platform as part of the release workflow. CI also runs `check-version-alignment.js` to enforce that `package.json`, `package-lock.json`, `Cargo.toml`, and both plugin manifest files (`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`) all declare the same version.
 
 ### 5.2. Release (`release.yml`)
 - **Trigger:** Any tag matching `v*` pushed to the repository.

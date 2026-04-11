@@ -64,6 +64,7 @@ claude-statusline setup
 | Git branch | Detected automatically, silently absent if not a git repo |
 | Session commits | Shows `+N` next to the branch for commits made during the current session |
 | Directory label | Displays as `~/parent/dir` so you always know which project you're in |
+| Terminal wrapping | Lines wrap to fit terminal width — reads `COLUMNS` or `stdout.columns` automatically |
 
 ---
 
@@ -157,6 +158,43 @@ Rows are color-coded by exit reason: green = normal, yellow = interrupted, orang
 ### Web Dashboard
 
 `--mode web` (the default) opens a browser-based dashboard with project filtering and light/dark theme toggle.
+
+---
+
+<div align="center">
+
+## Realtime Renderer
+
+</div>
+
+An optional background process that maintains a persistent Unix socket per terminal, enabling terminal-resize awareness and faster state access. **Disabled by default.**
+
+**Enable** by setting the environment variable (add to your shell profile to persist):
+
+```bash
+export CLAUDE_STATUSLINE_REALTIME=1
+```
+
+Accepted values: `1`, `true`, `TRUE`.
+
+When enabled, the native binary auto-spawns a renderer process the first time it runs in a terminal session. The renderer listens on a Unix socket and persists state to `~/.claude/statusline-state-{tty}.json`. It exits automatically on `session_end` or when explicitly stopped.
+
+**Terminal identification**
+
+Each terminal gets its own renderer, identified by a *TTY slug* derived in priority order from:
+
+1. `CLAUDE_STATUSLINE_TTY` — set this explicitly for a stable, human-readable slug
+2. `TERM_SESSION_ID` — used automatically by terminal emulators that set it
+3. `pid-{PID}` — fallback, changes on each shell restart
+
+**Commands:**
+
+```bash
+claude-statusline realtime-status   # Show renderer state and paths for current terminal
+claude-statusline realtime-stop     # Request renderer shutdown for current terminal
+```
+
+> The realtime renderer is Unix-only. On Windows, the feature flag is silently ignored.
 
 ---
 
