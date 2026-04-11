@@ -8,7 +8,7 @@ jobs:
   linux-x64:
     runs-on: ubuntu-latest
     env:
-      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
+      RELEASE_TAG: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +20,7 @@ jobs:
       - name: Copy binary and set version
         run: |
           cp target/x86_64-unknown-linux-gnu/release/statusline packages/linux-x64/statusline
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           cd packages/linux-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4
         with:
@@ -28,7 +28,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish linux-x64
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           if npm view @alyibrahim/claude-statusline-linux-x64@$VERSION version 2>/dev/null; then
             echo "Already published, skipping"
           else
@@ -40,7 +40,7 @@ jobs:
   linux-arm64:
     runs-on: ubuntu-latest
     env:
-      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
+      RELEASE_TAG: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
       - name: Copy binary and set version
         run: |
           cp target/aarch64-unknown-linux-gnu/release/statusline packages/linux-arm64/statusline
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           cd packages/linux-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4
         with:
@@ -60,7 +60,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish linux-arm64
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           if npm view @alyibrahim/claude-statusline-linux-arm64@$VERSION version 2>/dev/null; then
             echo "Already published, skipping"
           else
@@ -72,7 +72,7 @@ jobs:
   darwin-x64:
     runs-on: macos-14
     env:
-      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
+      RELEASE_TAG: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +84,7 @@ jobs:
       - name: Copy binary and set version
         run: |
           cp target/x86_64-apple-darwin/release/statusline packages/darwin-x64/statusline
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           cd packages/darwin-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4
         with:
@@ -92,7 +92,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish darwin-x64
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           if npm view @alyibrahim/claude-statusline-darwin-x64@$VERSION version 2>/dev/null; then
             echo "Already published, skipping"
           else
@@ -104,7 +104,7 @@ jobs:
   darwin-arm64:
     runs-on: macos-14
     env:
-      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
+      RELEASE_TAG: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -116,7 +116,7 @@ jobs:
       - name: Copy binary and set version
         run: |
           cp target/aarch64-apple-darwin/release/statusline packages/darwin-arm64/statusline
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           cd packages/darwin-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4
         with:
@@ -124,7 +124,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish darwin-arm64
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           if npm view @alyibrahim/claude-statusline-darwin-arm64@$VERSION version 2>/dev/null; then
             echo "Already published, skipping"
           else
@@ -136,7 +136,7 @@ jobs:
   win32-x64:
     runs-on: windows-latest
     env:
-      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
+      RELEASE_TAG: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,7 +147,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item target/x86_64-pc-windows-msvc/release/statusline.exe packages/win32-x64/statusline.exe
-          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          $VERSION = $env:RELEASE_TAG -replace '^v', ''
           Set-Location packages/win32-x64
           npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4
@@ -157,7 +157,7 @@ jobs:
       - name: Publish win32-x64
         shell: pwsh
         run: |
-          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          $VERSION = $env:RELEASE_TAG -replace '^v', ''
           $existing = npm view "@alyibrahim/claude-statusline-win32-x64@$VERSION" version 2>$null
           if ($existing) {
             Write-Host "Already published, skipping"
@@ -171,14 +171,14 @@ jobs:
     needs: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64]
     runs-on: ubuntu-latest
     env:
-      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
+      RELEASE_TAG: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.client_payload.sha }}
       - name: Set versions
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           npm version $VERSION --no-git-tag-version --allow-same-version
           for pkg in packages/linux-x64 packages/linux-arm64 packages/darwin-x64 packages/darwin-arm64 packages/win32-x64; do
             cd $pkg && npm version $VERSION --no-git-tag-version --allow-same-version && cd -
@@ -189,7 +189,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish root package
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           if npm view @alyibrahim/claude-statusline@$VERSION version 2>/dev/null; then
             echo "Already published, skipping"
           else
