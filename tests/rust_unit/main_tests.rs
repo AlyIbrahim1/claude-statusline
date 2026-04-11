@@ -518,3 +518,65 @@ fn render_sep_length_matches_line1_visible_length() {
         assert_eq!(line1_len, sep_visible);
     }
 }
+
+#[test]
+fn truncate_visible_preserves_ansi_and_adds_ellipsis() {
+    let s = "\x1b[32mhello world\x1b[0m";
+    let out = truncate_visible(s, 5);
+    assert!(out.contains("\x1b[32m"));
+    assert!(out.contains('…'));
+}
+
+#[test]
+fn wrap_chunks_wraps_when_narrow() {
+    let chunks = vec![
+        "\x1b[94mModel\x1b[0m".to_string(),
+        "\x1b[1mTask segment\x1b[0m".to_string(),
+        "\x1b[97m~/projects/myapp\x1b[0m".to_string(),
+    ];
+    let lines = wrap_chunks(chunks, Some(15), " \x1b[2m│\x1b[0m ");
+    assert!(lines.len() >= 2);
+}
+
+#[test]
+fn render_wraps_line1_when_columns_small() {
+    std::env::set_var("COLUMNS", "20");
+    let input = serde_json::json!({
+        "model": {"display_name": "claude-sonnet-4-6"},
+        "workspace": {"current_dir": "/tmp/myproject"},
+        "session_id": "",
+        "context_window": {"remaining_percentage": 90.0}
+    }).to_string();
+    let out = render(&input).unwrap();
+    std::env::remove_var("COLUMNS");
+    assert!(out.contains('\n'));
+}
+
+#[test]
+fn parse_status_input_defaults_model_and_dir() {
+    let input = serde_json::json!({
+        "session_id": "s1",
+        "context_window": {"remaining_percentage": 77.0}
+    });
+
+    let p = status_model::parse_status_input(&input);
+    assert_eq!(p.model, "Claude");
+    assert_eq!(p.session, "s1");
+    assert_eq!(p.remaining_pct, Some(77.0));
+    assert!(!p.dir.is_empty());
+}
+
+#[test]
+fn parse_status_input_sanitizes_model() {
+    let ansi_model = format!("{}[31mX{}[0m", '\x1b', '\x1b');
+    let input = serde_json::json!({
+        "model": {"display_name": ansi_model},
+        "workspace": {"current_dir": "/tmp/myproject"},
+        "session_id": "s2"
+    });
+
+    let p = status_model::parse_status_input(&input);
+    assert_eq!(p.model, "X");
+    assert_eq!(p.dir, "/tmp/myproject");
+    assert_eq!(p.session, "s2");
+}

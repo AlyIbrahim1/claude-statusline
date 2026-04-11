@@ -1,5 +1,8 @@
 mod history;
 mod history_tui;
+mod realtime;
+mod realtime_paths;
+mod status_model;
 
 use std::io::Read;
 use std::sync::mpsc;
@@ -55,6 +58,104 @@ fn strip_sgr(s: &str) -> String {
 /// Characters above U+FFFF count as 2 to match JS .length (surrogate pair) behaviour.
 fn visible_len(s: &str) -> usize {
     strip_sgr(s).chars().map(|c| if (c as u32) > 0xFFFF { 2 } else { 1 }).sum()
+}
+
+/// Returns terminal columns from COLUMNS env var.
+fn terminal_columns() -> Option<usize> {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|v| *v > 0)
+}
+
+/// Truncates a string by visible width while preserving SGR escape sequences.
+fn truncate_visible(s: &str, max_visible: usize) -> String {
+    if max_visible == 0 {
+        return String::new();
+    }
+    if visible_len(s) <= max_visible {
+        return s.to_string();
+    }
+
+    let mut out = String::new();
+    let mut chars = s.chars().peekable();
+    let mut visible = 0usize;
+
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' && chars.peek() == Some(&'[') {
+            out.push(ch);
+            out.push(chars.next().unwrap_or('['));
+            while chars.peek().map_or(false, |c| c.is_ascii_digit() || *c == ';') {
+                out.push(chars.next().unwrap());
+            }
+            if let Some(term) = chars.peek().copied() {
+                if "mGKHFABCDJ".contains(term) {
+                    out.push(chars.next().unwrap());
+                }
+            }
+            continue;
+        }
+
+        let w = if (ch as u32) > 0xFFFF { 2 } else { 1 };
+        if visible + w > max_visible {
+            break;
+        }
+        out.push(ch);
+        visible += w;
+    }
+
+    out.push('…');
+    out.push_str("\x1b[0m");
+    out
+}
+
+/// Wraps ANSI strings by semantic chunks using a styled separator.
+fn wrap_chunks(chunks: Vec<String>, width: Option<usize>, sep: &str) -> Vec<String> {
+    let Some(max_width) = width else {
+        return vec![chunks.join(sep)];
+    };
+    if max_width < 8 {
+        return chunks
+            .into_iter()
+            .map(|c| truncate_visible(&c, max_width.saturating_sub(1)))
+            .collect();
+    }
+
+    let sep_len = visible_len(sep);
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut cur_len = 0usize;
+
+    for raw_chunk in chunks {
+        let chunk = if visible_len(&raw_chunk) > max_width {
+            truncate_visible(&raw_chunk, max_width.saturating_sub(1))
+        } else {
+            raw_chunk
+        };
+        let chunk_len = visible_len(&chunk);
+
+        if cur.is_empty() {
+            cur = chunk;
+            cur_len = chunk_len;
+            continue;
+        }
+
+        let needed = cur_len + sep_len + chunk_len;
+        if needed <= max_width {
+            cur.push_str(sep);
+            cur.push_str(&chunk);
+            cur_len = needed;
+        } else {
+            lines.push(cur);
+            cur = chunk;
+            cur_len = chunk_len;
+        }
+    }
+
+    if !cur.is_empty() {
+        lines.push(cur);
+    }
+    lines
 }
 
 /// Builds the ANSI context usage bar. `remaining` is remaining_percentage from stdin.
@@ -429,12 +530,23 @@ fn main() {
                 history::handle_history();
             }
             return;
+        } else if args[1] == "realtime" {
+            if args.len() >= 3 && args[2] == "run" {
+                let _ = realtime::run_renderer_loop();
+                return;
+            }
+            if args.len() >= 3 && args[2] == "shutdown" {
+                let _ = realtime::emit_lifecycle_event("shutdown");
+                return;
+            }
         } else if args[1] == "hook" && args.len() >= 3 {
             if args[2] == "start" {
                 history::handle_hook_start();
+                let _ = realtime::emit_lifecycle_event("session_start");
                 return;
             } else if args[2] == "end" {
                 history::handle_hook_end();
+                let _ = realtime::emit_lifecycle_event("session_end");
                 return;
             }
         }
@@ -450,6 +562,7 @@ fn main() {
         Ok(s) => s,
         Err(_) => return,
     };
+    let _ = realtime::emit_state_update(&input);
     if let Some(out) = render(&input) {
         print!("{}", out);
     }
@@ -459,25 +572,15 @@ fn render(input: &str) -> Option<String> {
     use std::path::PathBuf;
 
     let data: serde_json::Value = serde_json::from_str(input).ok()?;
+    let parsed = status_model::parse_status_input(&data);
 
     // Extract fields
-    let model = {
-        let m = sanitize(data["model"]["display_name"].as_str().unwrap_or(""));
-        if m.is_empty() { "Claude".to_string() } else { m }
-    };
-    let dir = {
-        let d = data["workspace"]["current_dir"].as_str().unwrap_or("").to_string();
-        if d.is_empty() {
-            std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default()
-        } else { d }
-    };
-    let session = data["session_id"].as_str().unwrap_or("").to_string();
+    let model = parsed.model;
+    let dir = parsed.dir;
+    let session = parsed.session;
 
     // Context bar
-    let ctx = data["context_window"]["remaining_percentage"]
-        .as_f64()
+    let ctx = parsed.remaining_pct
         .map(context_bar)
         .unwrap_or_default();
 
@@ -537,7 +640,7 @@ fn render(input: &str) -> Option<String> {
     let token_display = if total_in.is_some() || total_out.is_some() || jsonl_tok.is_some() {
         let t_in = total_in.unwrap_or(0);
         let t_out = total_out.unwrap_or(0);
-        format!("\x1b[2m│\x1b[0m \x1b[97m{}↓ {}↑\x1b[0m", format_tokens(t_in), format_tokens(t_out))
+        format!("\x1b[97m{}↓ {}↑\x1b[0m", format_tokens(t_in), format_tokens(t_out))
     } else {
         String::new()
     };
@@ -570,14 +673,16 @@ fn render(input: &str) -> Option<String> {
         .iter().copied().filter(|s| !s.is_empty()).collect();
     let usage_content = usage_parts.join("  ");
 
-    // line2: usage, cost, token display
-    let line2_parts: Vec<&str> = [usage_content.as_str(), cost_display.as_str(), token_display.as_str()]
-        .iter().copied().filter(|s| !s.is_empty()).collect();
-    let line2 = if !line2_parts.is_empty() {
-        format!("\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m {}", line2_parts.join("  "))
-    } else {
-        String::new()
-    };
+    let mut line2_chunks = vec!["\x1b[0m\x1b[32mUsage\x1b[0m".to_string()];
+    if !usage_content.is_empty() {
+        line2_chunks.push(usage_content);
+    }
+    if !cost_display.is_empty() {
+        line2_chunks.push(cost_display.trim_start().to_string());
+    }
+    if !token_display.is_empty() {
+        line2_chunks.push(token_display);
+    }
 
     // Agent display
     let agent_display = if active_agents > 0 {
@@ -588,19 +693,28 @@ fn render(input: &str) -> Option<String> {
 
     let model_display = format!("\x1b[0m\x1b[94m{}\x1b[0m{}{}", model, effort_sfx, agent_display);
 
-    let line1 = if !task.is_empty() {
-        format!("{} \x1b[2m│\x1b[0m \x1b[1m{}\x1b[0m \x1b[2m│\x1b[0m {}{}", model_display, task, dir_display, ctx)
-    } else {
-        format!("{} \x1b[2m│\x1b[0m {}{}", model_display, dir_display, ctx)
-    };
+    let mut line1_chunks = vec![model_display];
+    if !task.is_empty() {
+        line1_chunks.push(format!("\x1b[1m{}\x1b[0m", task));
+    }
+    line1_chunks.push(format!("{}{}", dir_display, ctx));
 
-    let sep_len = visible_len(&line1);
+    let columns = terminal_columns();
+    let sep_token = " \x1b[2m│\x1b[0m ";
+    let wrapped_line1 = wrap_chunks(line1_chunks, columns, sep_token);
+    let sep_len = wrapped_line1.iter().map(|l| visible_len(l)).max().unwrap_or(0);
     let sep = format!("\x1b[2m{}\x1b[0m", "─".repeat(sep_len));
 
-    let output = if !line2.is_empty() {
-        format!("{}\n{}\n{}", line1, sep, line2)
+    let line2 = if line2_chunks.len() > 1 {
+        wrap_chunks(line2_chunks, columns, sep_token)
     } else {
-        line1
+        Vec::new()
+    };
+
+    let output = if !line2.is_empty() {
+        format!("{}\n{}\n{}", wrapped_line1.join("\n"), sep, line2.join("\n"))
+    } else {
+        wrapped_line1.join("\n")
     };
 
     Some(output)
@@ -609,3 +723,7 @@ fn render(input: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "../tests/rust_unit/main_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/rust_unit/realtime_tests.rs"]
+mod realtime_tests;

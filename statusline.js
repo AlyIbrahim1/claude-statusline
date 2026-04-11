@@ -8,6 +8,135 @@ const os = require('os');
 const { execSync, execFileSync } = require('child_process');
 const { normalizeProjectSlug } = require('./scripts/slug-utils');
 
+function realtimeEnabled() {
+  const v = process.env.CLAUDE_STATUSLINE_REALTIME;
+  return v === '1' || v === 'true' || v === 'TRUE';
+}
+
+function realtimeTtySlug() {
+  const raw = (process.env.CLAUDE_STATUSLINE_TTY || process.env.TERM_SESSION_ID || `pid-${process.pid}`).trim();
+  return raw.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+function atomicWrite(filePath, obj) {
+  const tmp = `${filePath}.tmp`;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(tmp, JSON.stringify(obj));
+  fs.renameSync(tmp, filePath);
+}
+
+function emitRealtimeEvent(eventType, payload) {
+  if (!realtimeEnabled()) return;
+  try {
+    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+    const ttySlug = realtimeTtySlug();
+    const now = Date.now();
+    const statePath = path.join(claudeDir, `statusline-state-${ttySlug}.json`);
+    const registryPath = path.join(claudeDir, `statusline-renderer-${ttySlug}.json`);
+
+    atomicWrite(registryPath, {
+      version: 1,
+      pid: process.pid,
+      tty_slug: ttySlug,
+      heartbeat_at_ms: now,
+      socket_path: path.join(claudeDir, `statusline-rt-${ttySlug}.sock`),
+    });
+
+    atomicWrite(statePath, {
+      version: 1,
+      event_type: eventType,
+      tty_slug: ttySlug,
+      updated_at_ms: now,
+      payload: payload || {},
+    });
+  } catch (_) {
+    // Silent fail - never break statusline rendering
+  }
+}
+
+function stripSgr(s) {
+  return String(s).replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function visibleLen(s) {
+  return [...stripSgr(String(s))].reduce((sum, ch) => sum + (ch.codePointAt(0) > 0xFFFF ? 2 : 1), 0);
+}
+
+function terminalColumns() {
+  const fromStdout = Number(process.stdout && process.stdout.columns);
+  if (Number.isFinite(fromStdout) && fromStdout > 0) return fromStdout;
+  const fromEnv = Number(process.env.COLUMNS);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return null;
+}
+
+function truncateVisible(s, maxVisible) {
+  if (!maxVisible || maxVisible <= 0) return '';
+  if (visibleLen(s) <= maxVisible) return String(s);
+
+  const src = String(s);
+  let out = '';
+  let visible = 0;
+  for (let i = 0; i < src.length;) {
+    if (src[i] === '\x1b' && src[i + 1] === '[') {
+      let j = i + 2;
+      while (j < src.length && /[0-9;]/.test(src[j])) j++;
+      if (j < src.length && /[mGKHFABCDJ]/.test(src[j])) {
+        out += src.slice(i, j + 1);
+        i = j + 1;
+        continue;
+      }
+    }
+
+    const code = src.codePointAt(i);
+    const ch = String.fromCodePoint(code);
+    const width = code > 0xFFFF ? 2 : 1;
+    if (visible + width > maxVisible) break;
+    out += ch;
+    visible += width;
+    i += code > 0xFFFF ? 2 : 1;
+  }
+  return `${out}…\x1b[0m`;
+}
+
+function wrapChunks(chunks, width, sep) {
+  if (!width) return [chunks.join(sep)];
+  if (width < 8) {
+    return chunks.map(c => truncateVisible(c, Math.max(1, width - 1)));
+  }
+
+  const sepLen = visibleLen(sep);
+  const lines = [];
+  let current = '';
+  let currentLen = 0;
+
+  for (const rawChunk of chunks) {
+    const chunk = visibleLen(rawChunk) > width
+      ? truncateVisible(rawChunk, Math.max(1, width - 1))
+      : rawChunk;
+    const chunkLen = visibleLen(chunk);
+
+    if (!current) {
+      current = chunk;
+      currentLen = chunkLen;
+      continue;
+    }
+
+    const needed = currentLen + sepLen + chunkLen;
+    if (needed <= width) {
+      current += `${sep}${chunk}`;
+      currentLen = needed;
+    } else {
+      lines.push(current);
+      current = chunk;
+      currentLen = chunkLen;
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines;
+}
+
 const cmd = process.argv[2];
 if (cmd === 'history') {
   require('./scripts/history').handleHistory().catch(e => {
@@ -18,10 +147,18 @@ if (cmd === 'history') {
 } else if (cmd === 'hook') {
   const hookcmd = process.argv[3];
   if (hookcmd === 'start') {
+    emitRealtimeEvent('session_start', {});
     require('./scripts/history').handleHookStart();
     return;
   } else if (hookcmd === 'end') {
+    emitRealtimeEvent('session_end', {});
     require('./scripts/history').handleHookEnd();
+    return;
+  }
+} else if (cmd === 'realtime') {
+  const subcmd = process.argv[3];
+  if (subcmd === 'shutdown') {
+    emitRealtimeEvent('shutdown', {});
     return;
   }
 }
@@ -89,6 +226,7 @@ process.stdin.on('end', () => {
   try {
     const sanitize = s => String(s).replace(/\x1b\[[0-9;]*[mGKHFABCDJ]/g, '');
     const data = JSON.parse(input);
+    emitRealtimeEvent('state_update', data);
     const model = sanitize(data.model?.display_name || 'Claude');
     const dir = data.workspace?.current_dir || process.cwd();
     const session = data.session_id || '';
@@ -230,13 +368,14 @@ process.stdin.on('end', () => {
       const fmt = n => n >= 1_000_000 ? (n % 1_000_000 === 0 ? `${n / 1_000_000}M` : `${(n / 1_000_000).toFixed(1)}M`)
                      : n >= 1000     ? `${(n / 1000).toFixed(1)}k`
                      : String(n);
-      tokenDisplay = `\x1b[2m│\x1b[0m \x1b[97m${fmt(totalIn ?? 0)}↓ ${fmt(totalOut ?? 0)}↑\x1b[0m`;
+      tokenDisplay = `\x1b[97m${fmt(totalIn ?? 0)}↓ ${fmt(totalOut ?? 0)}↑\x1b[0m`;
     }
 
     const usageContent = [u7d, u5h].filter(Boolean).join('  ');
-    const line2 = (usageContent || costDisplay || tokenDisplay)
-      ? `\x1b[0m\x1b[32mUsage\x1b[0m \x1b[2m│\x1b[0m ${[usageContent, costDisplay, tokenDisplay].filter(Boolean).join('  ')}`
-      : '';
+    const line2Chunks = ['\x1b[0m\x1b[32mUsage\x1b[0m'];
+    if (usageContent) line2Chunks.push(usageContent);
+    if (costDisplay) line2Chunks.push(costDisplay.trimStart());
+    if (tokenDisplay) line2Chunks.push(tokenDisplay);
     // Effort level: read from env var first, then settings.json, then fall back to
     // model-based default (sonnet-4/opus-4 default to "medium" in Claude Code).
     const effortLetters = { low: 'L', medium: 'M', high: 'H' };
@@ -262,12 +401,17 @@ process.stdin.on('end', () => {
 
     const agentDisplay = activeAgents > 0 ? ` \x1b[0m\x1b[36m↪ ${activeAgents}\x1b[0m` : '';
     const modelDisplay = `\x1b[0m\x1b[94m${model}\x1b[0m` + effortSuffix + agentDisplay;
-    const line1 = task
-      ? `${modelDisplay} \x1b[2m│\x1b[0m \x1b[1m${task}\x1b[0m \x1b[2m│\x1b[0m ${dirDisplay}${ctx}`
-      : `${modelDisplay} \x1b[2m│\x1b[0m ${dirDisplay}${ctx}`;
-    const visibleLen = line1.replace(/\x1b\[[0-9;]*m/g, '').length;
-    const sep = `\x1b[2m${'─'.repeat(visibleLen)}\x1b[0m`;
-    process.stdout.write(line2 ? `${line1}\n${sep}\n${line2}` : line1);
+    const line1Chunks = [modelDisplay];
+    if (task) line1Chunks.push(`\x1b[1m${task}\x1b[0m`);
+    line1Chunks.push(`${dirDisplay}${ctx}`);
+
+    const columns = terminalColumns();
+    const sepToken = ' \x1b[2m│\x1b[0m ';
+    const wrappedLine1 = wrapChunks(line1Chunks, columns, sepToken);
+    const sepLen = wrappedLine1.reduce((max, line) => Math.max(max, visibleLen(line)), 0);
+    const sep = `\x1b[2m${'─'.repeat(sepLen)}\x1b[0m`;
+    const wrappedLine2 = line2Chunks.length > 1 ? wrapChunks(line2Chunks, columns, sepToken) : [];
+    process.stdout.write(wrappedLine2.length ? `${wrappedLine1.join('\n')}\n${sep}\n${wrappedLine2.join('\n')}` : wrappedLine1.join('\n'));
   } catch (e) {
     // Silent fail - don't break statusline on parse errors
   }

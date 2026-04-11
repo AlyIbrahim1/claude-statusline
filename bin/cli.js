@@ -6,6 +6,7 @@ const config = require('../scripts/config');
 const { getSettingsPath } = config;
 const { spawnSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const USAGE = `
 claude-statusline <command>
@@ -16,6 +17,8 @@ Commands:
   download-binary  Download the native binary for this platform
   enable-history   Enable tracking session analytics to JSONL (default on setup)
   disable-history  Remove history tracking hooks from Claude settings
+  realtime-status  Show realtime renderer state for current terminal
+  realtime-stop    Request realtime renderer shutdown for current terminal
   history          Open the session analytics dashboard
                    --mode web|terminal (persist dashboard mode preference)
 `.trim();
@@ -100,6 +103,72 @@ function runHistory() {
   process.exit(child.status || 0);
 }
 
+function runRealtimeStatus() {
+  const paths = config.getRealtimePaths();
+  let registry = null;
+  let state = null;
+
+  try {
+    if (fs.existsSync(paths.registryPath)) {
+      registry = JSON.parse(fs.readFileSync(paths.registryPath, 'utf8'));
+    }
+  } catch (e) {}
+
+  try {
+    if (fs.existsSync(paths.statePath)) {
+      state = JSON.parse(fs.readFileSync(paths.statePath, 'utf8'));
+    }
+  } catch (e) {}
+
+  const summary = {
+    ttySlug: paths.ttySlug,
+    registryPath: paths.registryPath,
+    statePath: paths.statePath,
+    socketPath: paths.socketPath,
+    hasRegistry: !!registry,
+    hasState: !!state,
+    registry,
+    stateEventType: state?.event_type || null,
+    stateUpdatedAt: state?.updated_at_ms || null,
+  };
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+function runRealtimeStop() {
+  const net = require('net');
+  const paths = config.getRealtimePaths();
+  const ts = Date.now();
+  const event = {
+    version: 1,
+    event_type: 'shutdown',
+    tty_slug: paths.ttySlug,
+    updated_at_ms: ts,
+  };
+
+  try {
+    config.atomicWrite(paths.statePath, event);
+  } catch (e) {}
+
+  const done = () => {
+    console.log('✓ Realtime shutdown event sent');
+    process.exit(0);
+  };
+
+  if (fs.existsSync(paths.socketPath)) {
+    const client = net.createConnection(paths.socketPath);
+    client.on('connect', () => {
+      client.write(JSON.stringify(event) + '\n');
+      client.end();
+    });
+    client.on('close', done);
+    client.on('error', done);
+  } else {
+    done();
+  }
+}
+
 const cmd = process.argv[2];
 
 if (cmd === 'setup') {
@@ -160,6 +229,12 @@ if (cmd === 'setup') {
 
 } else if (cmd === 'history') {
   runHistory();
+
+} else if (cmd === 'realtime-status') {
+  runRealtimeStatus();
+
+} else if (cmd === 'realtime-stop') {
+  runRealtimeStop();
 
 } else if (cmd === undefined) {
   console.log(USAGE);

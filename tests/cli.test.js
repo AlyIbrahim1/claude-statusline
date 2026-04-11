@@ -78,4 +78,36 @@ describe('cli.js', () => {
     const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
     expect(settings.hooks).toBeUndefined();
   });
+
+  test('realtime-status: prints JSON summary for current tty slug', () => {
+    const ttySlug = 'pts-42';
+    const statePath = path.join(tmpDir, `statusline-state-${ttySlug}.json`);
+    fs.writeFileSync(statePath, JSON.stringify({
+      event_type: 'state_update',
+      tty_slug: ttySlug,
+      updated_at_ms: 123,
+    }));
+
+    const r = run(['realtime-status'], { CLAUDE_STATUSLINE_TTY: ttySlug });
+    expect(r.status).toBe(0);
+
+    const out = JSON.parse(r.stdout.toString());
+    expect(out.ttySlug).toBe(ttySlug);
+    expect(out.hasState).toBe(true);
+    expect(out.stateEventType).toBe('state_update');
+  });
+
+  test('realtime-stop: succeeds using JS fallback when no native binary', () => {
+    const ttySlug = 'pts-88';
+    const r = run(['realtime-stop'], {
+      CLAUDE_STATUSLINE_REALTIME: '1',
+      CLAUDE_STATUSLINE_TTY: ttySlug,
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toContain('Realtime shutdown event sent');
+
+    const statePath = path.join(tmpDir, `statusline-state-${ttySlug}.json`);
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    expect(state.event_type).toBe('shutdown');
+  });
 });

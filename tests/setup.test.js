@@ -113,6 +113,28 @@ describe('setup()', () => {
     jest.restoreAllMocks();
   });
 
+  test('setup command output is unchanged when realtime env flag is enabled', () => {
+    process.env.CLAUDE_STATUSLINE_REALTIME = '1';
+    const result = load()();
+    expect(result.ok).toBe(true);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.statusLine.command).toContain('statusline.js');
+    expect(settings.statusLine.command).not.toContain('realtime');
+    delete process.env.CLAUDE_STATUSLINE_REALTIME;
+  });
+
+  test('setup command output is unchanged when realtime env flag is disabled', () => {
+    process.env.CLAUDE_STATUSLINE_REALTIME = '0';
+    const result = load()();
+    expect(result.ok).toBe(true);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.statusLine.command).toContain('statusline.js');
+    expect(settings.statusLine.command).not.toContain('realtime');
+    delete process.env.CLAUDE_STATUSLINE_REALTIME;
+  });
+
   test('setup adds SessionStart and SessionEnd hooks', () => {
     const result = load()();
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));

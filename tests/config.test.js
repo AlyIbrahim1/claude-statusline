@@ -1,7 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { getSettingsPath, atomicWrite } = require('../scripts/config');
+const { getSettingsPath, atomicWrite, getRealtimeTtySlug } = require('../scripts/config');
 
 describe('getSettingsPath', () => {
   const original = process.env.CLAUDE_CONFIG_DIR;
@@ -60,5 +60,35 @@ describe('atomicWrite', () => {
     const filePath = path.join(tmpDir, 'settings.json');
     atomicWrite(filePath, { x: 1 });
     expect(fs.existsSync(filePath + '.tmp')).toBe(false);
+  });
+});
+
+describe('getRealtimeTtySlug', () => {
+  const originalTty = process.env.CLAUDE_STATUSLINE_TTY;
+  const originalTermSession = process.env.TERM_SESSION_ID;
+
+  afterEach(() => {
+    if (originalTty === undefined) delete process.env.CLAUDE_STATUSLINE_TTY;
+    else process.env.CLAUDE_STATUSLINE_TTY = originalTty;
+
+    if (originalTermSession === undefined) delete process.env.TERM_SESSION_ID;
+    else process.env.TERM_SESSION_ID = originalTermSession;
+  });
+
+  test('uses sanitized CLAUDE_STATUSLINE_TTY when available', () => {
+    process.env.CLAUDE_STATUSLINE_TTY = 'pts/77@host';
+    expect(getRealtimeTtySlug()).toBe('pts-77-host');
+  });
+
+  test('falls back to TERM_SESSION_ID when CLAUDE_STATUSLINE_TTY sanitizes empty', () => {
+    process.env.CLAUDE_STATUSLINE_TTY = '///';
+    process.env.TERM_SESSION_ID = 'term#1';
+    expect(getRealtimeTtySlug()).toBe('term-1');
+  });
+
+  test('falls back to pid slug when env sources sanitize empty', () => {
+    process.env.CLAUDE_STATUSLINE_TTY = '///';
+    process.env.TERM_SESSION_ID = '***';
+    expect(getRealtimeTtySlug()).toBe(`pid-${process.pid}`);
   });
 });

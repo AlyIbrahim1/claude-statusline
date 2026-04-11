@@ -3,11 +3,43 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-function getSettingsPath() {
+function getClaudeConfigDir() {
   const configDir = process.env.CLAUDE_CONFIG_DIR;
-  const base = (configDir && configDir.trim())
+  return (configDir && configDir.trim())
     ? configDir
     : path.join(os.homedir(), '.claude');
+}
+
+function sanitizeSlug(s) {
+  return String(s || '')
+    .replace(/[^a-zA-Z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function getRealtimeTtySlug() {
+  const preferred = [process.env.CLAUDE_STATUSLINE_TTY, process.env.TERM_SESSION_ID];
+  for (const raw of preferred) {
+    const slug = sanitizeSlug(raw || '');
+    if (slug) return slug;
+  }
+  return sanitizeSlug(`pid-${process.pid}`);
+}
+
+function getRealtimePaths() {
+  const claudeDir = getClaudeConfigDir();
+  const ttySlug = getRealtimeTtySlug();
+  return {
+    claudeDir,
+    ttySlug,
+    registryPath: path.join(claudeDir, `statusline-renderer-${ttySlug}.json`),
+    statePath: path.join(claudeDir, `statusline-state-${ttySlug}.json`),
+    socketPath: path.join(claudeDir, `statusline-rt-${ttySlug}.sock`),
+  };
+}
+
+function getSettingsPath() {
+  const base = getClaudeConfigDir();
   return path.join(base, 'settings.json');
 }
 
@@ -40,4 +72,11 @@ function resolveBinary() {
   return binaryPath;
 }
 
-module.exports = { getSettingsPath, atomicWrite, resolveBinary };
+module.exports = {
+  getSettingsPath,
+  atomicWrite,
+  resolveBinary,
+  getClaudeConfigDir,
+  getRealtimeTtySlug,
+  getRealtimePaths,
+};
