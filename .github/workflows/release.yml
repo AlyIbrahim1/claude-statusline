@@ -1,19 +1,20 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  repository_dispatch:
+    types: [release-ready]
 
 jobs:
   linux-x64:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.sha }}
       - name: Add target
         run: rustup target add x86_64-unknown-linux-gnu
-      - name: Run tests
-        run: cargo test
       - name: Build
         run: cargo build --release --target x86_64-unknown-linux-gnu
       - name: Copy binary and set version
@@ -38,8 +39,12 @@ jobs:
 
   linux-arm64:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.sha }}
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Build
@@ -66,8 +71,12 @@ jobs:
 
   darwin-x64:
     runs-on: macos-14
+    env:
+      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.sha }}
       - name: Add target
         run: rustup target add x86_64-apple-darwin
       - name: Build
@@ -94,8 +103,14 @@ jobs:
 
   darwin-arm64:
     runs-on: macos-14
+    env:
+      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.sha }}
+      - name: Add target
+        run: rustup target add aarch64-apple-darwin
       - name: Build
         run: cargo build --release --target aarch64-apple-darwin
       - name: Copy binary and set version
@@ -120,10 +135,12 @@ jobs:
 
   win32-x64:
     runs-on: windows-latest
+    env:
+      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run tests
-        run: cargo test
+        with:
+          ref: ${{ github.event.client_payload.sha }}
       - name: Build
         run: cargo build --release --target x86_64-pc-windows-msvc
       - name: Copy binary and set version
@@ -153,8 +170,12 @@ jobs:
   publish-root:
     needs: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64]
     runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: ${{ github.event.client_payload.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.sha }}
       - name: Set versions
         run: |
           VERSION=${GITHUB_REF_NAME#v}
