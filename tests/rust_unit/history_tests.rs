@@ -56,3 +56,50 @@ fn test_write_sessions_atomic() {
     assert_eq!(read_back[1]["session_id"], "s2");
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn test_read_sessions_skips_invalid_jsonl_lines() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "hist-invalid-lines-{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    ));
+
+    std::fs::write(
+        &path,
+        "{\"session_id\":\"ok-1\"}\nnot-json\n{\"session_id\":\"ok-2\"}\n",
+    )
+    .unwrap();
+
+    let sessions = read_sessions(&path);
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[0]["session_id"], "ok-1");
+    assert_eq!(sessions[1]["session_id"], "ok-2");
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn test_append_session_creates_missing_parent_directory() {
+    let base = std::env::temp_dir().join(format!(
+        "hist-parent-create-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    ));
+    let path = base.join("nested").join("history.jsonl");
+
+    let s = json!({"session_id": "auto-parent", "project_name": "proj"});
+    append_session(&path, &s);
+
+    assert!(path.exists());
+    let sessions = read_sessions(&path);
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["session_id"], "auto-parent");
+
+    let _ = std::fs::remove_dir_all(base);
+}

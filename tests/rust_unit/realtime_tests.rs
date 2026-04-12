@@ -188,6 +188,26 @@ fn cleanup_stale_runtime_keeps_recent_registry_and_socket() {
 }
 
 #[test]
+fn cleanup_stale_runtime_ignores_malformed_registry_json() {
+    let tmp = std::env::temp_dir().join(format!("rt_bad_registry_cleanup_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let tty = "pts/445";
+    let registry = realtime_paths::renderer_registry_path(&tmp, tty);
+    let socket = realtime_paths::socket_path(&tmp, tty);
+
+    std::fs::write(&registry, "{bad json").unwrap();
+    std::fs::write(&socket, "sock").unwrap();
+
+    realtime::cleanup_stale_runtime(&tmp, tty, 9_999_999).unwrap();
+    // Malformed registry should not trigger deletion as heartbeat cannot be read.
+    assert!(registry.exists());
+    assert!(socket.exists());
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
 fn apply_resize_snapshot_updates_width_height_fields() {
     let tmp = std::env::temp_dir().join(format!("rt_resize_snapshot_{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
@@ -260,5 +280,72 @@ fn emit_state_update_recovers_from_stale_registry() {
     std::env::remove_var("CLAUDE_CONFIG_DIR");
     std::env::remove_var("CLAUDE_STATUSLINE_REALTIME");
     std::env::remove_var("CLAUDE_STATUSLINE_TTY");
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn emit_state_update_accepts_malformed_input_json_and_persists_empty_payload() {
+    let tmp = std::env::temp_dir().join(format!("rt_bad_input_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    std::env::set_var("CLAUDE_CONFIG_DIR", &tmp);
+    std::env::set_var("CLAUDE_STATUSLINE_REALTIME", "1");
+    std::env::set_var("CLAUDE_STATUSLINE_TTY", "pts/919");
+
+    realtime::emit_state_update("{not json").unwrap();
+
+    let state_path = realtime_paths::state_path(&tmp, "pts/919");
+    let text = std::fs::read_to_string(state_path).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["event_type"], "state_update");
+    assert!(v["payload"].is_object());
+
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+    std::env::remove_var("CLAUDE_STATUSLINE_REALTIME");
+    std::env::remove_var("CLAUDE_STATUSLINE_TTY");
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn cleanup_stale_runtime_noop_when_registry_missing() {
+    // If no registry file exists, cleanup should succeed without error.
+    let tmp = std::env::temp_dir().join(format!("rt_no_registry_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    // Intentionally do NOT write any registry or socket file.
+    let result = realtime::cleanup_stale_runtime(&tmp, "pts/777", 99_999_999);
+    assert!(result.is_ok(), "cleanup should succeed even when no registry file exists");
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn emit_lifecycle_event_noop_when_realtime_disabled() {
+    // When realtime is disabled, emit_lifecycle_event should succeed silently.
+    std::env::remove_var("CLAUDE_STATUSLINE_REALTIME");
+    let result = realtime::emit_lifecycle_event("session_start");
+    assert!(result.is_ok(), "emit_lifecycle_event should be ok (no-op) when realtime is disabled");
+}
+
+#[test]
+fn sanitize_slug_collapses_double_dashes_via_path_helper() {
+    // Double slashes in tty → each '/' → '-' → "pts--99" → collapse to "pts-99".
+    let tmp = std::env::temp_dir().join(format!("rt_slug_dd_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let path = realtime_paths::state_path(&tmp, "pts//99");
+    let name = path.file_name().unwrap().to_string_lossy();
+    assert!(name.contains("pts-99"), "expected double-dash collapsed: got {}", name);
+    assert!(!name.contains("pts--"), "double dash should be collapsed: got {}", name);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn sanitize_slug_trims_leading_and_trailing_dashes_via_path_helper() {
+    // Leading/trailing special chars should be trimmed from the resulting slug.
+    let tmp = std::env::temp_dir().join(format!("rt_slug_trim_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let path = realtime_paths::socket_path(&tmp, "/pts/42/");
+    let name = path.file_name().unwrap().to_string_lossy();
+    // "/pts/42/" → "-pts-42-" → trim leading/trailing → "pts-42"
+    assert!(name.contains("pts-42"), "expected trimmed slug: got {}", name);
+    assert!(!name.starts_with("statusline-rt--"), "leading dash should be trimmed: got {}", name);
     std::fs::remove_dir_all(&tmp).ok();
 }

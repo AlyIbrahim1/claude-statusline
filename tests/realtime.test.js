@@ -59,6 +59,26 @@ describe('realtime producer snapshots', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  test('shutdown sanitizes tty slug in state file path', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-rt-shutdown-sanitize-'));
+    const tty = 'pts/701@host';
+
+    const r = spawnSync(process.execPath, [STATUSLINE, 'realtime', 'shutdown'], {
+      env: {
+        ...process.env,
+        CLAUDE_CONFIG_DIR: tmp,
+        CLAUDE_STATUSLINE_TTY: tty,
+        CLAUDE_STATUSLINE_REALTIME: '1',
+      },
+    });
+
+    expect(r.status).toBe(0);
+    const statePath = path.join(tmp, 'statusline-state-pts-701-host.json');
+    expect(fs.existsSync(statePath)).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
   test('isolates state snapshots across tty slugs', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-rt-isolation-'));
 

@@ -19,4 +19,12 @@ describe('token weighting parity vectors', () => {
     expect(rustWeighted).toBe(expected);
     expect(jsWeighted).toBe(rustWeighted);
   });
+
+  test('js and rust formulas stay in parity across a broad range', () => {
+    for (let cacheRead = 0; cacheRead <= 5000; cacheRead += 1) {
+      const jsWeighted = Math.round(cacheRead * 0.1);
+      const rustWeighted = Math.floor((cacheRead + 5) / 10);
+      expect(jsWeighted).toBe(rustWeighted);
+    }
+  });
 });

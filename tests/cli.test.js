@@ -110,4 +110,68 @@ describe('cli.js', () => {
     const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(state.event_type).toBe('shutdown');
   });
+
+  test('realtime-status: prints JSON summary with empty state when no files exist', () => {
+    const ttySlug = 'pts-00';
+    const r = run(['realtime-status'], { CLAUDE_STATUSLINE_TTY: ttySlug });
+    expect(r.status).toBe(0);
+
+    const out = JSON.parse(r.stdout.toString());
+    expect(out.ttySlug).toBe(ttySlug);
+    expect(out.hasState).toBe(false);
+    expect(out.hasRegistry).toBe(false);
+    expect(out.stateEventType).toBeNull();
+    expect(out.registry).toBeNull();
+  });
+
+  test('realtime-status: reflects registry file when it exists', () => {
+    const ttySlug = 'pts-11';
+    const registryPath = path.join(tmpDir, `statusline-renderer-${ttySlug}.json`);
+    fs.writeFileSync(registryPath, JSON.stringify({ heartbeat_at_ms: 999 }));
+
+    const r = run(['realtime-status'], { CLAUDE_STATUSLINE_TTY: ttySlug });
+    const out = JSON.parse(r.stdout.toString());
+    expect(out.hasRegistry).toBe(true);
+    expect(out.registry.heartbeat_at_ms).toBe(999);
+  });
+
+  test('realtime-status: ignores malformed state/registry JSON instead of crashing', () => {
+    const ttySlug = 'pts-bad';
+    fs.writeFileSync(path.join(tmpDir, `statusline-renderer-${ttySlug}.json`), '{ bad');
+    fs.writeFileSync(path.join(tmpDir, `statusline-state-${ttySlug}.json`), '{ bad');
+
+    const r = run(['realtime-status'], { CLAUDE_STATUSLINE_TTY: ttySlug });
+    expect(r.status).toBe(0);
+
+    const out = JSON.parse(r.stdout.toString());
+    expect(out.ttySlug).toBe(ttySlug);
+    expect(out.hasRegistry).toBe(false);
+    expect(out.hasState).toBe(false);
+    expect(out.stateEventType).toBeNull();
+  });
+
+  test('hook: dispatches to JS fallback statusline.js when no binary found', () => {
+    // The hook command proxies to statusline.js when no binary is present.
+    // Use 'hook start' with a fake marker — statusline.js exits 0 for recognized hook args.
+    const r = run(['hook', 'start', '--marker=test-marker']);
+    expect(r.status).toBe(0);
+  });
+
+  test('history: exits 1 and prints error for unknown option', () => {
+    const r = run(['history', '--unknown-flag']);
+    expect(r.status).toBe(1);
+    expect(r.stderr.toString()).toContain('Unknown history option');
+  });
+
+  test('history: exits 1 when --mode is missing its value', () => {
+    const r = run(['history', '--mode']);
+    expect(r.status).toBe(1);
+    expect(r.stderr.toString()).toContain('Missing value for --mode');
+  });
+
+  test('history: exits 1 for invalid --mode value', () => {
+    const r = run(['history', '--mode', 'invalid']);
+    expect(r.status).toBe(1);
+    expect(r.stderr.toString()).toContain('Invalid mode');
+  });
 });

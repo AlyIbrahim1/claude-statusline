@@ -96,4 +96,22 @@ describe('slash command lifecycle', () => {
     expect(uninstallResult.stdout.toString()).toBe('');
     expect(uninstallResult.stderr.toString()).toBe('');
   });
+
+  test('plugin install does NOT copy slash commands — plugin system discovers them from plugin dir', () => {
+    const pluginRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-slash-plugin-'));
+    fs.writeFileSync(path.join(pluginRoot, 'statusline.js'), '');
+
+    try {
+      const result = runScript(POSTINSTALL, {
+        CLAUDE_PLUGIN_ROOT: pluginRoot,
+        npm_config_global: 'false',
+      });
+
+      expect(result.status).toBe(0);
+      // Commands directory must NOT be created — plugin system handles command discovery.
+      expect(fs.existsSync(path.join(tmpDir, 'commands'))).toBe(false);
+    } finally {
+      fs.rmSync(pluginRoot, { recursive: true, force: true });
+    }
+  });
 });

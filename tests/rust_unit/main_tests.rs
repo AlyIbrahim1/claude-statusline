@@ -312,6 +312,25 @@ fn scan_todos_returns_empty_when_no_in_progress() {
 }
 
 #[test]
+fn scan_todos_ignores_malformed_json_files() {
+    let tmp = std::env::temp_dir().join(format!("sl_test_malformed_todos_{}", std::process::id()));
+    let todos_dir = tmp.join("todos");
+    std::fs::create_dir_all(&todos_dir).unwrap();
+    let session = "sessbad";
+
+    std::fs::write(todos_dir.join("sessbad-agent-1.json"), "{ bad json").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(15));
+    write_todo_file(&todos_dir, "sessbad-agent-2.json", &serde_json::json!([
+        {"status": "in_progress", "activeForm": "Valid task"}
+    ]));
+
+    let (task, agents) = scan_todos(&tmp, session);
+    assert_eq!(task, "Valid task");
+    assert_eq!(agents, 1);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
 fn scan_todos_empty_session_returns_empty() {
     let tmp = std::env::temp_dir().join(format!("sl_test5_{}", std::process::id()));
     let (task, agents) = scan_todos(&tmp, "");
@@ -389,6 +408,44 @@ fn read_session_tokens_uses_offset_cache() {
     assert_eq!(r2.total_in, 120);
     assert_eq!(r2.total_out, 60);
     std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn read_session_tokens_ignores_malformed_and_incomplete_lines() {
+    let tmp = std::env::temp_dir().join(format!("sl_tok_test_badlines_{}", std::process::id()));
+    let slug = "-tmp-myproject";
+    let projects_dir = tmp.join("projects").join(slug);
+    std::fs::create_dir_all(&projects_dir).unwrap();
+    let session = "testsession-badlines";
+
+    let jsonl = concat!(
+        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n",
+        "{bad json}\n",
+        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"cache_read_input_tokens\":10,\"cache_creation_input_tokens\":0}}}\n",
+        // Incomplete final line (no newline) should be ignored.
+        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":999,\"output_tokens\":999}}}"
+    );
+    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
+
+    // Malformed cache file should be ignored and rebuilt.
+    std::fs::write(tmp.join(format!("statusline-tokcache-{}.json", session)), "{bad cache").unwrap();
+
+    let result = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
+    assert_eq!(result.total_in, 7);
+    assert_eq!(result.total_out, 4);
+
+    let cache_text = std::fs::read_to_string(tmp.join(format!("statusline-tokcache-{}.json", session))).unwrap();
+    let cache: serde_json::Value = serde_json::from_str(&cache_text).unwrap();
+    assert!(cache["offset"].as_u64().unwrap_or(0) > 0);
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn git_helpers_return_empty_on_invalid_directory() {
+    let bogus = "/path/that/does/not/exist/for-statusline-tests";
+    assert_eq!(git_branch(bogus), "");
+    assert_eq!(git_head_sha(bogus), "");
 }
 
 fn make_basic_input(model: &str) -> String {
@@ -579,4 +636,170 @@ fn parse_status_input_sanitizes_model() {
     assert_eq!(p.model, "X");
     assert_eq!(p.dir, "/tmp/myproject");
     assert_eq!(p.session, "s2");
+}
+
+#[test]
+fn parse_status_input_handles_null_heavy_payload() {
+    let input = serde_json::json!({
+        "model": {"display_name": null},
+        "workspace": {"current_dir": null},
+        "session_id": null,
+        "context_window": {"remaining_percentage": null}
+    });
+
+    let p = status_model::parse_status_input(&input);
+    assert_eq!(p.model, "Claude");
+    assert_eq!(p.session, "");
+    assert_eq!(p.remaining_pct, None);
+    assert!(!p.dir.is_empty());
+}
+
+#[test]
+fn render_prefers_stdin_tokens_when_jsonl_totals_are_lower() {
+    let tmp = std::env::temp_dir().join(format!("sl_render_tok_pref_{}", std::process::id()));
+    let slug = "-tmp-myproject-lower";
+    let projects_dir = tmp.join("projects").join(slug);
+    std::fs::create_dir_all(&projects_dir).unwrap();
+    let session = "sess-stdin-wins";
+
+    let jsonl = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
+    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
+
+    std::env::set_var("CLAUDE_CONFIG_DIR", &tmp);
+    let input = serde_json::json!({
+        "model": {"display_name": "M"},
+        "workspace": {"current_dir": "/tmp/myproject-lower"},
+        "session_id": session,
+        "context_window": {
+            "remaining_percentage": 90.0,
+            "total_input_tokens": 100,
+            "total_output_tokens": 50
+        }
+    }).to_string();
+
+    let out = render(&input).unwrap();
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+    assert!(out.contains("100↓ 50↑"));
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn sanitize_handles_unterminated_escape_at_end_of_string() {
+    // \x1b[ at end of string — digits are consumed but no terminator found, sequence is dropped.
+    assert_eq!(sanitize("hello\x1b["), "hello");
+    // Digits consumed too, no terminator, all silently dropped.
+    assert_eq!(sanitize("hello\x1b[32"), "hello");
+}
+
+#[test]
+fn sanitize_non_matching_terminator_preserves_remainder() {
+    // \x1b[5z — 'z' is not in the recognized set, so it stays in output.
+    assert_eq!(sanitize("\x1b[5z"), "z");
+}
+
+#[test]
+fn scan_todos_missing_todos_dir_returns_empty() {
+    // If todos/ does not exist, scan_todos should return ("", 0) — not crash.
+    let tmp = std::env::temp_dir().join(format!("sl_no_todos_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    // Do NOT create tmp/todos/
+    let (task, agents) = scan_todos(&tmp, "some-session");
+    assert_eq!(task, "");
+    assert_eq!(agents, 0);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn truncate_visible_no_ellipsis_when_exactly_at_max() {
+    let s = "hello"; // visible_len = 5
+    let out = truncate_visible(s, 5);
+    assert_eq!(out, "hello");
+    assert!(!out.contains('…'));
+}
+
+#[test]
+fn truncate_visible_returns_empty_for_zero_max() {
+    assert_eq!(truncate_visible("hello", 0), "");
+}
+
+#[test]
+fn wrap_chunks_single_chunk_never_split() {
+    let chunks = vec!["hello world".to_string()];
+    let lines = wrap_chunks(chunks, Some(5), " | ");
+    // A single chunk is never split, even when wider than max_width.
+    assert_eq!(lines.len(), 1);
+}
+
+#[test]
+fn render_shows_agent_indicator_when_active() {
+    let tmp = std::env::temp_dir().join(format!("sl_agents_render_{}", std::process::id()));
+    let todos_dir = tmp.join("todos");
+    std::fs::create_dir_all(&todos_dir).unwrap();
+    let session = "agentsess";
+    std::fs::write(
+        todos_dir.join(format!("{}-agent-1.json", session)),
+        r#"[{"status":"in_progress","activeForm":"Deploy"}]"#,
+    ).unwrap();
+
+    std::env::set_var("CLAUDE_CONFIG_DIR", &tmp);
+    let input = serde_json::json!({
+        "model": {"display_name": "M"},
+        "workspace": {"current_dir": "/tmp/myproject"},
+        "session_id": session,
+        "context_window": {"remaining_percentage": 90.0}
+    }).to_string();
+
+    let out = render(&input).unwrap();
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+    std::fs::remove_dir_all(&tmp).ok();
+
+    assert!(out.contains("↪"), "expected agent indicator ↪ in output");
+    assert!(out.contains('1'), "expected agent count 1 in output");
+}
+
+#[test]
+fn render_shows_usage_label_when_rate_limits_present_but_percentages_null() {
+    let input = serde_json::json!({
+        "model": {"display_name": "M"},
+        "session_id": "",
+        "rate_limits": {}
+    }).to_string();
+    let out = render(&input).unwrap();
+    // rate_limits key present → subscription mode → no cost shown
+    assert!(!out.contains('$'), "cost should not be shown for subscription users");
+    // Usage section is only rendered if there is actual percentage data.
+    // With an empty rate_limits object, neither u5h nor u7d have data — line2 stays as label-only
+    // and is suppressed (line2_chunks.len() > 1 is false).
+    assert!(!out.contains("Usage\n") || !out.contains("Current") || !out.contains("Weekly"),
+        "no percentage data means no Usage line with rates");
+}
+
+#[test]
+fn effort_suffix_reads_from_settings_json() {
+    let tmp = std::env::temp_dir().join(format!("sl_effort_settings_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("settings.json"),
+        r#"{"effortLevel":"low"}"#,
+    ).unwrap();
+
+    let sfx = effort_suffix("some-model", &tmp);
+    std::fs::remove_dir_all(&tmp).ok();
+
+    assert!(sfx.contains("[L]"), "effort suffix should reflect effortLevel from settings.json");
+}
+
+#[test]
+fn effort_suffix_env_takes_priority_over_settings_json() {
+    let tmp = std::env::temp_dir().join(format!("sl_effort_env_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(tmp.join("settings.json"), r#"{"effortLevel":"low"}"#).unwrap();
+
+    std::env::set_var("CLAUDE_CODE_EFFORT_LEVEL", "max");
+    let sfx = effort_suffix("some-model", &tmp);
+    std::env::remove_var("CLAUDE_CODE_EFFORT_LEVEL");
+    std::fs::remove_dir_all(&tmp).ok();
+
+    assert!(sfx.contains("[MAXX]"), "env CLAUDE_CODE_EFFORT_LEVEL should override settings.json");
 }
