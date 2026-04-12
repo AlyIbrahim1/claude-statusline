@@ -37,7 +37,7 @@
 - **Execution Target:** ~5ms for the Rust binary; ~100ms for the Node.js fallback. Both are acceptable; the Rust path is preferred.
 - **Separation of Concerns:** A dedicated History module (`src/history.rs`) manages hook execution, avoiding any database/file writes during the real-time prompt loop.
 - **Graceful Fallback:** At runtime, the CLI resolves the platform Rust binary first; if not found, it falls back to the Node.js renderer. The fallback is distributed in the root npm package without compilation steps, covering unsupported OS/Arch combinations.
-- **Fail-safe Design:** 3-second stdin timeout guard; silently discards bad JSON to strictly guarantee Claude Code never crashes due to the statusline.
+- **Fail-safe Design:** 3-second stdin timeout guard; silently discards bad JSON to strictly guarantee Claude Code never crashes due to the statusline. Settings-reading functions (`setup`, `uninstall`, `toggleHistory`, `getDashboardMode`, `setDashboardMode`) validate that parsed settings.json is a plain object before proceeding, preventing crashes on malformed-but-valid JSON (e.g. `null`, arrays, strings).
 - **Performance Optimizations:** A byte-offset cache (`~/.claude/statusline-tokcache-{session}.json`) avoids re-parsing the full token JSONL on each invocation, keeping latency flat as session length grows.
 - **Dependency Profile:** Zero runtime shell dependencies (no `jq`, `bc`).
 - **Realtime Renderer Isolation:** The realtime renderer runs as a completely separate process launched via the `realtime run` subcommand. It communicates with the main render path exclusively through Unix sockets and JSON state files, with no shared in-process state. Spawn calls are gated behind `#[cfg(not(test))]` guards to prevent test-suite spawn loops.
@@ -66,10 +66,10 @@
 
 ### 5.1. CI (`ci.yml`)
 - **Trigger:** Every push and pull request to `main`.
-- **Purpose:** Runs the Jest test suite (`npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (85 unit tests) is run separately per-platform as part of the release workflow. CI also runs `check-version-alignment.js` to enforce that `package.json`, `package-lock.json`, `Cargo.toml`, and both plugin manifest files (`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`) all declare the same version.
+- **Purpose:** Runs the Jest test suite (154 tests via `npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (108 unit tests) is run per-platform with `--test-threads=1` (sequential, to prevent failures from global env var mutation); on success, CI dispatches a `release-ready` repository dispatch event that triggers the release workflow when the commit is a version tag. CI also runs `check-version-alignment.js` to enforce that `package.json`, `package-lock.json`, `Cargo.toml`, and both plugin manifest files (`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`) all declare the same version.
 
 ### 5.2. Release (`release.yml`)
-- **Trigger:** Any tag matching `v*` pushed to the repository.
+- **Trigger:** A `release-ready` repository dispatch event sent by CI after all tests pass on a version-tag commit. The tag push itself initiates the pipeline via CI, but the release jobs do not start until CI explicitly signals readiness — ensuring no release fires before the test suite is green.
 - **Purpose:** Cross-compiles the Rust binary for all five supported platform targets, sets the version from the tag, and publishes each platform-specific npm package (`@alyibrahim/claude-statusline-{platform}-{arch}`) followed by the root package once all platform jobs succeed. Skips re-publishing if a given version is already present on npm (idempotent).
 - **Targets:** `linux-x64`, `linux-arm64` (via `cross`), `darwin-x64`, `darwin-arm64` (macOS 14 runner), `win32-x64`.
 

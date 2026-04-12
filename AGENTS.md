@@ -29,7 +29,9 @@ Two independent halves that never call each other, sharing only the settings pat
 - `scripts/config.js` — `getSettingsPath()` (respects `$CLAUDE_CONFIG_DIR`), `atomicWrite()` (write to `.tmp` then rename), `resolveBinary()` (searches optionalDependency packages for a platform binary, returns path or null), `getRealtimePaths()` / `getRealtimeTtySlug()` (realtime state file paths per terminal)
 - `scripts/setup.js` — adds/updates the `statusLine` key in settings.json, preserves all other keys, validates paths for unsafe shell chars
 - `scripts/uninstall.js` — removes the `statusLine` key, preserves other settings
-- `scripts/postinstall.js` / `scripts/preuninstall.js` — npm lifecycle hooks; both must always exit 0
+- `scripts/plugin-autosetup.js` — exports `pluginAutoSetup()`, called by postinstall when `CLAUDE_PLUGIN_ROOT` is set; configures `statusLine` in settings.json using the binary (preferred) or JS fallback
+- `scripts/postinstall.js` — npm lifecycle hook; when `CLAUDE_PLUGIN_ROOT` is set (plugin install), calls pluginAutoSetup() and exits; otherwise runs the global-install setup path. Must always exit 0.
+- `scripts/preuninstall.js` — npm lifecycle hook; must always exit 0
 - `bin/cli.js` — CLI entry point
 
 Settings are written to `~/.claude/settings.json` or `$CLAUDE_CONFIG_DIR/settings.json`. Only the `statusLine` key is ever modified.
@@ -67,12 +69,13 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 - CI guard in `setup.js`: auto-setup is skipped unless `force=true` or `npm_config_global=true`, so local `npm install` does not modify settings
 - Context window display normalizes by dividing raw context by `0.835` to account for the 16.5% auto-compact buffer
 - Effort level is read from `CLAUDE_CODE_EFFORT_LEVEL` env var first, then falls back to settings.json
+- All settings-reading functions (setup, uninstall, toggleHistory, getDashboardMode, setDashboardMode) validate that parsed settings.json is a plain object before proceeding — prevents crashes on null, array, or string JSON values
 
 ## Tests
 
-102 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
+154 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
-85 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (62), `history_tests.rs` (7), `history_tui_tests.rs` (5), `realtime_tests.rs` (11). Run with `cargo test -- --test-threads=1`.
+108 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (77), `history_tests.rs` (9), `history_tui_tests.rs` (5), `realtime_tests.rs` (17). Run with `cargo test -- --test-threads=1`.
 
 ## Commits
 

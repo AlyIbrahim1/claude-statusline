@@ -34,7 +34,7 @@ Done. The statusline configures itself automatically. Restart Claude Code to see
 
 > If auto-setup didn't run: `claude-statusline setup`
 
-**Plugin install (Claude Code marketplace):** Search for `claude-statusline` in the Claude Code plugin browser. The plugin auto-configures on first session start. To get the native Rust binary after a plugin install, run:
+**Plugin install (Claude Code marketplace):** Search for `claude-statusline` in the Claude Code plugin browser. The plugin auto-configures during installation. To get the native Rust binary after a plugin install, run:
 
 ```bash
 claude-statusline download-binary

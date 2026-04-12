@@ -28,13 +28,13 @@ Changes to one half do not require touching the other.
 ## Running Tests
 
 ```bash
-# JavaScript tests (102 tests)
+# JavaScript tests (154 tests)
 npm test
 
 # If npm test fails with "jest: Permission denied"
 node node_modules/jest/bin/jest.js
 
-# Rust tests (85 tests)
+# Rust tests (108 tests)
 cargo test -- --test-threads=1
 ```
 
@@ -46,12 +46,12 @@ All tests must pass before a PR can be merged.
 
 ### JavaScript changes
 
-Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly. `scripts/config.js` also exports `getRealtimePaths()` and `getRealtimeTtySlug()` for realtime path resolution; use these rather than constructing paths manually. `scripts/slug-utils.js` exports `normalizeProjectSlug()` for cross-platform project path normalization — use this if your change touches history or token cache code.
+Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly. `scripts/config.js` also exports `getRealtimePaths()` and `getRealtimeTtySlug()` for realtime path resolution; use these rather than constructing paths manually. `scripts/slug-utils.js` exports `normalizeProjectSlug()` for cross-platform project path normalization — use this if your change touches history or token cache code. All settings-reading functions validate that the parsed JSON is a plain object before proceeding — never write to settings.json if the file contains non-object valid JSON.
 
 If your change touches history slash commands:
 
 - Source slash command files live in `.claude/commands/`.
-- `scripts/postinstall.js` copies those files into `~/.claude/commands/` during global install.
+- `scripts/postinstall.js` copies those files into `~/.claude/commands/` during global install. When `CLAUDE_PLUGIN_ROOT` is set, postinstall instead calls `pluginAutoSetup()` (from `scripts/plugin-autosetup.js`) and exits early, skipping the normal global setup path.
 - `scripts/preuninstall.js` removes only package-owned history command files and must not remove unrelated user commands.
 - Add or update tests in `tests/slash-commands.test.js` for lifecycle behavior changes.
 
