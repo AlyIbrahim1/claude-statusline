@@ -2,7 +2,6 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const open = require('open');
 const { normalizeProjectSlug } = require('./slug-utils');
 
 const JSONL_PATH = path.join(
@@ -165,6 +164,7 @@ async function handleHistory() {
   const tempPath = path.join(os.tmpdir(), 'claude-statusline-dashboard.html');
   fs.writeFileSync(tempPath, html);
   try {
+    const open = require('open');
     await open.default(tempPath);
     console.log(`Dashboard opened: ${tempPath}`);
   } catch (e) {
