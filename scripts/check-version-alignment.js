@@ -15,7 +15,7 @@ function readCargoVersion(cargoTomlPath) {
 }
 
 function main() {
-  const root = path.resolve(__dirname, '..');
+  const root = process.env.CHECK_VERSIONS_ROOT || path.resolve(__dirname, '..');
   const packageJsonPath = path.join(root, 'package.json');
   const packageLockPath = path.join(root, 'package-lock.json');
   const cargoTomlPath = path.join(root, 'Cargo.toml');
@@ -56,6 +56,11 @@ function main() {
   }
 
   for (const [name, version] of Object.entries(optionalDeps)) {
+    // Each platform package must be pinned to the root version — they are published together.
+    if (version !== expected) {
+      errors.push(`optionalDependencies[${name}] is pinned to ${version}, expected root version ${expected}`);
+    }
+
     const lockRootVersion = lock.packages && lock.packages[''] && lock.packages[''].optionalDependencies
       ? lock.packages[''].optionalDependencies[name]
       : undefined;
