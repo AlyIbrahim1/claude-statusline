@@ -12,6 +12,9 @@ function uninstall() {
   } catch (e) {
     return { ok: false, error: 'settings.json contains invalid JSON — cannot safely modify.' };
   }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return { ok: false, error: 'settings.json does not contain a JSON object — cannot safely modify.' };
+  }
 
   if (settings.statusLine) {
     delete settings.statusLine;

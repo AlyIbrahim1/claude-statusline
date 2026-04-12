@@ -84,6 +84,13 @@ describe('setup()', () => {
     expect(result.error).toMatch(/invalid JSON/i);
   });
 
+  test('returns error when settings.json is a JSON array', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify([{ bad: true }], null, 2));
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not contain a JSON object/i);
+  });
+
   test('uses binary path when platform package is installed', () => {
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sl-setup-binary-'));
     const fakeBin = path.join(fakeDir, 'statusline');
@@ -141,24 +148,48 @@ describe('setup()', () => {
     expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
     expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('--marker=claude-statusline-owned-v1');
-      expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command)
-        .toContain(`"${process.execPath}"`);
-      expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command.startsWith('node ')).toBe(false);
+    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command)
+      .toContain(`"${process.execPath}"`);
+    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command.startsWith('node ')).toBe(false);
   });
 
-    test('returns error when hooks config contains invalid JSON', () => {
-      const realReadFileSync = fs.readFileSync;
-      jest.spyOn(fs, 'readFileSync').mockImplementation((filePath, encoding) => {
-        if (String(filePath).endsWith(path.join('hooks', 'hooks.json'))) {
-          return '{ invalid json }';
-        }
-        return realReadFileSync(filePath, encoding);
-      });
+  test('hooks are not duplicated when setup is called a second time', () => {
+    load()();
+    load()();
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    // Each event should have exactly one hook entry, not two.
+    expect(settings.hooks?.SessionStart?.length).toBe(1);
+    expect(settings.hooks?.SessionEnd?.length).toBe(1);
+  });
 
-      const result = load()();
-      expect(result.ok).toBe(false);
-      expect(result.error).toMatch(/Hook configuration error/i);
+  test('setup preserves unrelated hooks in other events', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      hooks: {
+        PreToolUse: [{ type: 'command', command: 'echo pre' }],
+      }
+    }, null, 2));
+
+    load()();
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(settings.hooks?.PreToolUse).toBeDefined();
+    expect(settings.hooks?.SessionStart).toBeDefined();
+  });
+
+  test('returns error when hooks config contains invalid JSON', () => {
+    const realReadFileSync = fs.readFileSync;
+    jest.spyOn(fs, 'readFileSync').mockImplementation((filePath, encoding) => {
+      if (String(filePath).endsWith(path.join('hooks', 'hooks.json'))) {
+        return '{ invalid json }';
+      }
+      return realReadFileSync(filePath, encoding);
     });
+
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Hook configuration error/i);
+  });
 });
 
 describe('toggleHistory()', () => {
@@ -198,14 +229,14 @@ describe('toggleHistory()', () => {
     expect(settings.hooks).toBeUndefined();
   });
 
-    test('enable writes hook commands with absolute node executable path', () => {
-      const result = load()(true);
-      expect(result.ok).toBe(true);
-      const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
-      const startCommand = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command || '';
-      expect(startCommand).toContain(`"${process.execPath}"`);
-      expect(startCommand.startsWith('node ')).toBe(false);
-    });
+  test('enable writes hook commands with absolute node executable path', () => {
+    const result = load()(true);
+    expect(result.ok).toBe(true);
+    const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
+    const startCommand = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command || '';
+    expect(startCommand).toContain(`"${process.execPath}"`);
+    expect(startCommand.startsWith('node ')).toBe(false);
+  });
 
   test('disable preserves unrelated hooks', () => {
     const settingsPath = path.join(tmpDir, 'settings.json');
@@ -238,5 +269,148 @@ describe('toggleHistory()', () => {
     const result = load()(true);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/invalid JSON/i);
+  });
+
+  test('returns error when settings.json is not an object', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify(['bad'], null, 2));
+    const result = load()(true);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not contain a JSON object/i);
+  });
+});
+
+describe('getDashboardMode()', () => {
+  let tmpDir, origConfigDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-getmode-'));
+    origConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = tmpDir;
+    delete require.cache[require.resolve('../scripts/setup')];
+  });
+
+  afterEach(() => {
+    if (origConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = origConfigDir;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const load = () => require('../scripts/setup').getDashboardMode;
+
+  test('returns web when settings.json does not exist', () => {
+    const result = load()();
+    expect(result.ok).toBe(true);
+    expect(result.mode).toBe('web');
+  });
+
+  test('returns terminal when settings has dashboardMode: terminal', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'),
+      JSON.stringify({ dashboardMode: 'terminal' }, null, 2));
+    const result = load()();
+    expect(result.ok).toBe(true);
+    expect(result.mode).toBe('terminal');
+  });
+
+  test('returns web when settings has dashboardMode: web', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'),
+      JSON.stringify({ dashboardMode: 'web' }, null, 2));
+    expect(load()().mode).toBe('web');
+  });
+
+  test('defaults to web for any unrecognised dashboardMode value', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'),
+      JSON.stringify({ dashboardMode: 'unknown' }, null, 2));
+    expect(load()().mode).toBe('web');
+  });
+
+  test('returns error when settings.json contains invalid JSON', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), '{ bad }');
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/invalid JSON/i);
+  });
+
+  test('returns error when settings.json is not an object', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify(['bad'], null, 2));
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not contain a JSON object/i);
+  });
+
+  test('includes settingsPath in result', () => {
+    const result = load()();
+    expect(result.settingsPath).toContain('settings.json');
+  });
+});
+
+describe('setDashboardMode()', () => {
+  let tmpDir, origConfigDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-setmode-'));
+    origConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = tmpDir;
+    delete require.cache[require.resolve('../scripts/setup')];
+  });
+
+  afterEach(() => {
+    if (origConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = origConfigDir;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const load = () => require('../scripts/setup').setDashboardMode;
+
+  test('writes dashboardMode: web to settings.json', () => {
+    const result = load()('web');
+    expect(result.ok).toBe(true);
+    expect(result.mode).toBe('web');
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.dashboardMode).toBe('web');
+  });
+
+  test('writes dashboardMode: terminal to settings.json', () => {
+    const result = load()('terminal');
+    expect(result.ok).toBe(true);
+    expect(result.mode).toBe('terminal');
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.dashboardMode).toBe('terminal');
+  });
+
+  test('preserves other settings keys when writing mode', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'),
+      JSON.stringify({ model: 'sonnet', statusLine: { type: 'command', command: '"bin"' } }, null, 2));
+    load()('web');
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.model).toBe('sonnet');
+    expect(settings.statusLine).toBeDefined();
+    expect(settings.dashboardMode).toBe('web');
+  });
+
+  test('creates settings.json when it does not exist', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    expect(fs.existsSync(settingsPath)).toBe(false);
+    load()('terminal');
+    expect(fs.existsSync(settingsPath)).toBe(true);
+  });
+
+  test('returns error for invalid mode value', () => {
+    const result = load()('invalid');
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/invalid mode/i);
+  });
+
+  test('returns error when settings.json contains invalid JSON', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), '{ bad }');
+    const result = load()('web');
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/invalid JSON/i);
+  });
+
+  test('returns error when settings.json is not an object', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify(['bad'], null, 2));
+    const result = load()('terminal');
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not contain a JSON object/i);
   });
 });

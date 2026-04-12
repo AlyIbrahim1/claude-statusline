@@ -59,6 +59,9 @@ function setup({ force = false } = {}) {
     } catch (e) {
       return { ok: false, error: 'settings.json contains invalid JSON — fix manually then re-run.' };
     }
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return { ok: false, error: 'settings.json does not contain a JSON object — fix manually then re-run.' };
+    }
   }
 
   const binaryPath = config.resolveBinary();
@@ -180,6 +183,9 @@ function toggleHistory(enable) {
     } catch (e) {
       return { ok: false, error: 'settings.json contains invalid JSON — fix manually then re-run.' };
     }
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return { ok: false, error: 'settings.json does not contain a JSON object — fix manually then re-run.' };
+    }
   }
 
   try {
@@ -209,6 +215,9 @@ function getDashboardMode() {
   } catch (e) {
     return { ok: false, error: 'settings.json contains invalid JSON - fix manually then re-run.' };
   }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return { ok: false, error: 'settings.json does not contain a JSON object - fix manually then re-run.' };
+  }
 
   const mode = settings.dashboardMode === 'terminal' ? 'terminal' : 'web';
   return { ok: true, settingsPath, mode };
@@ -226,6 +235,9 @@ function setDashboardMode(mode) {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     } catch (e) {
       return { ok: false, error: 'settings.json contains invalid JSON - fix manually then re-run.' };
+    }
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return { ok: false, error: 'settings.json does not contain a JSON object - fix manually then re-run.' };
     }
   }
 

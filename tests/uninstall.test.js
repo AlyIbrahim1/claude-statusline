@@ -50,6 +50,20 @@ describe('uninstall()', () => {
     expect(result.error).toMatch(/invalid JSON/i);
   });
 
+  test('returns error when settings.json is not an object (array)', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify(['bad'], null, 2));
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not contain a JSON object/i);
+  });
+
+  test('returns error when settings.json is not an object (null)', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), 'null');
+    const result = load()();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not contain a JSON object/i);
+  });
+
   test('removes hooks from settings.json', () => {
     const settingsPath = path.join(tmpDir, 'settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify({
@@ -110,6 +124,65 @@ describe('uninstall()', () => {
     const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(written.hooks.SessionStart[0].hooks[0].command).toBe(unrelatedCmd);
     expect(written.model).toBe('sonnet');
+  });
+
+  test('removes marker-owned hook in wrapped format', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const markerCmd = '"/usr/bin/node" "/some/path/statusline.js" hook start --marker=claude-statusline-owned-v1';
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: markerCmd }] }],
+        SessionEnd:   [{ matcher: '', hooks: [{ type: 'command', command: '"/usr/bin/node" "/some/path/statusline.js" hook end --marker=claude-statusline-owned-v1' }] }],
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks).toBeUndefined();
+    expect(written.model).toBe('sonnet');
+  });
+
+  test('preserves unrelated hooks from other tools', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const unrelatedCmd = 'some-other-tool hook start';
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: unrelatedCmd }] }]
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.hooks.SessionStart[0].hooks[0].command).toBe(unrelatedCmd);
+    expect(written.model).toBe('sonnet');
+  });
+
+  test('removes both statusLine and marker hooks in one call', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      model: 'sonnet',
+      statusLine: { type: 'command', command: '"/some/path/claude-statusline"' },
+      hooks: {
+        SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: '"/usr/bin/node" "/some/path/statusline.js" hook start --marker=claude-statusline-owned-v1' }] }],
+      }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.statusLine).toBeUndefined();
+    expect(written.hooks).toBeUndefined();
+    expect(written.model).toBe('sonnet');
+  });
+
+  test('preserves dashboardMode during uninstall', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      dashboardMode: 'terminal',
+      statusLine: { type: 'command', command: 'node /old.js' }
+    }, null, 2));
+    load()();
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(written.statusLine).toBeUndefined();
+    expect(written.dashboardMode).toBe('terminal');
   });
 
   test('returns error when hooks config contains invalid JSON', () => {
