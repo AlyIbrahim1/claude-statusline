@@ -3,8 +3,19 @@
 const fs = require('fs');
 const path = require('path');
 const { setup } = require('./setup');
+const { pluginAutoSetup } = require('./plugin-autosetup');
 const config = require('./config');
 try {
+  // Plugin installs run npm scripts in plugin context; configure statusLine once at install time.
+  if (process.env.CLAUDE_PLUGIN_ROOT) {
+    pluginAutoSetup(process.env.CLAUDE_PLUGIN_ROOT);
+    const pluginBinaryPath = config.resolveBinary();
+    if (pluginBinaryPath && process.platform !== 'win32') {
+      try { fs.chmodSync(pluginBinaryPath, 0o755); } catch (e) {}
+    }
+    process.exit(0);
+  }
+
   const result = setup({ force: false });
   if (result.settingsPath === null) process.exit(0); // non-global install, skip silently
 

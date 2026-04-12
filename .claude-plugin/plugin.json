@@ -10,5 +10,5 @@
   "license": "MIT",
   "keywords": ["statusline", "context", "git", "tokens", "cost", "rate-limits", "session-history"],
   "commands": [".claude/commands/", "commands/"],
-  "hooks": ["./hooks/hooks.json", "./hooks/plugin-setup.json"]
+  "hooks": ["./hooks/hooks.json"]
 }

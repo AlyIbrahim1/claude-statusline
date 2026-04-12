@@ -32,6 +32,29 @@ describe('postinstall.js', () => {
     expect(fs.existsSync(path.join(tmpDir, 'settings.json'))).toBe(false);
   });
 
+  test('runs plugin autosetup on non-global install when CLAUDE_PLUGIN_ROOT is set', () => {
+    const pluginRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-plugin-root-'));
+    fs.writeFileSync(path.join(pluginRoot, 'statusline.js'), '');
+
+    try {
+      const result = spawnSync(process.execPath, [POSTINSTALL], {
+        env: {
+          ...process.env,
+          CLAUDE_CONFIG_DIR: tmpDir,
+          CLAUDE_PLUGIN_ROOT: pluginRoot,
+          npm_config_global: 'false'
+        }
+      });
+
+      expect(result.status).toBe(0);
+      const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+      expect(settings.statusLine).toBeDefined();
+      expect(settings.statusLine.type).toBe('command');
+    } finally {
+      fs.rmSync(pluginRoot, { recursive: true, force: true });
+    }
+  });
+
   test('prints success message on global install', () => {
     const result = spawnSync(process.execPath, [POSTINSTALL], {
       env: { ...process.env, CLAUDE_CONFIG_DIR: tmpDir, npm_config_global: 'true' }
@@ -100,6 +123,7 @@ describe('postinstall.js chmod behavior', () => {
 
     expect(chmodSpy).not.toHaveBeenCalled();
   });
+
 });
 
 describe('preuninstall.js', () => {
