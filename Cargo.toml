@@ -1,6 +1,6 @@
 [package]
 name = "claude-statusline"
-version = "1.6.1"
+version = "1.6.2"
 edition = "2021"
 description = "Rich statusline for Claude Code — model, context bar, real-time token tracking, git branch, rate limits, and session stats."
 homepage = "https://github.com/AlyIbrahim1/claude-statusline"
