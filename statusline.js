@@ -4,45 +4,34 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { execSync, execFileSync } = require('child_process');
 const { normalizeProjectSlug } = require('./scripts/slug-utils');
+const {
+  getHomeDir,
+  getRealtimePaths,
+  atomicWrite: atomicWriteJson,
+} = require('./scripts/config');
 
 function realtimeEnabled() {
   const v = process.env.CLAUDE_STATUSLINE_REALTIME;
   return v === '1' || v === 'true' || v === 'TRUE';
 }
 
-function realtimeTtySlug() {
-  const raw = (process.env.CLAUDE_STATUSLINE_TTY || process.env.TERM_SESSION_ID || `pid-${process.pid}`).trim();
-  return raw.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-}
-
-function atomicWrite(filePath, obj) {
-  const tmp = `${filePath}.tmp`;
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(tmp, JSON.stringify(obj));
-  fs.renameSync(tmp, filePath);
-}
-
 function emitRealtimeEvent(eventType, payload) {
   if (!realtimeEnabled()) return;
   try {
-    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    const ttySlug = realtimeTtySlug();
+    const { claudeDir, ttySlug, statePath, registryPath, socketPath } = getRealtimePaths();
     const now = Date.now();
-    const statePath = path.join(claudeDir, `statusline-state-${ttySlug}.json`);
-    const registryPath = path.join(claudeDir, `statusline-renderer-${ttySlug}.json`);
 
-    atomicWrite(registryPath, {
+    atomicWriteJson(registryPath, {
       version: 1,
       pid: process.pid,
       tty_slug: ttySlug,
       heartbeat_at_ms: now,
-      socket_path: path.join(claudeDir, `statusline-rt-${ttySlug}.sock`),
+      socket_path: socketPath,
     });
 
-    atomicWrite(statePath, {
+    atomicWriteJson(statePath, {
       version: 1,
       event_type: eventType,
       tty_slug: ttySlug,
@@ -261,7 +250,7 @@ process.stdin.on('end', () => {
     // Current task from todos
     let task = '';
     let activeAgents = 0;
-    const homeDir = os.homedir();
+    const homeDir = getHomeDir();
     const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(homeDir, '.claude');
     const todosDir = path.join(claudeDir, 'todos');
     if (session && fs.existsSync(todosDir)) {

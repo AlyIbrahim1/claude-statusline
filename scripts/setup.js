@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
-const { getSettingsPath, atomicWrite } = config;
+const { getSettingsPath, atomicWrite, isPlainObject } = config;
 
 const UNSAFE_CHARS = /["`$!()\\]/;
 const HOOK_MARKER = 'claude-statusline-owned-v1';
@@ -59,7 +59,7 @@ function setup({ force = false } = {}) {
     } catch (e) {
       return { ok: false, error: 'settings.json contains invalid JSON — fix manually then re-run.' };
     }
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    if (!isPlainObject(settings)) {
       return { ok: false, error: 'settings.json does not contain a JSON object — fix manually then re-run.' };
     }
   }
@@ -183,7 +183,7 @@ function toggleHistory(enable) {
     } catch (e) {
       return { ok: false, error: 'settings.json contains invalid JSON — fix manually then re-run.' };
     }
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    if (!isPlainObject(settings)) {
       return { ok: false, error: 'settings.json does not contain a JSON object — fix manually then re-run.' };
     }
   }
@@ -215,7 +215,7 @@ function getDashboardMode() {
   } catch (e) {
     return { ok: false, error: 'settings.json contains invalid JSON - fix manually then re-run.' };
   }
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+  if (!isPlainObject(settings)) {
     return { ok: false, error: 'settings.json does not contain a JSON object - fix manually then re-run.' };
   }
 
@@ -236,7 +236,7 @@ function setDashboardMode(mode) {
     } catch (e) {
       return { ok: false, error: 'settings.json contains invalid JSON - fix manually then re-run.' };
     }
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    if (!isPlainObject(settings)) {
       return { ok: false, error: 'settings.json does not contain a JSON object - fix manually then re-run.' };
     }
   }

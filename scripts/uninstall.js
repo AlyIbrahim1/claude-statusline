@@ -1,6 +1,6 @@
 'use strict';
 const fs = require('fs');
-const { getSettingsPath, atomicWrite } = require('./config');
+const { getSettingsPath, atomicWrite, isPlainObject } = require('./config');
 
 function uninstall() {
   const settingsPath = getSettingsPath();
@@ -12,7 +12,7 @@ function uninstall() {
   } catch (e) {
     return { ok: false, error: 'settings.json contains invalid JSON — cannot safely modify.' };
   }
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+  if (!isPlainObject(settings)) {
     return { ok: false, error: 'settings.json does not contain a JSON object — cannot safely modify.' };
   }
 

@@ -4,10 +4,14 @@ use std::fs;
 use std::io::{Read, Write};
 use serde_json::{Value, json};
 
-fn get_jsonl_path() -> PathBuf {
-    let home = env::var("HOME")
+fn home_dir_string() -> String {
+    env::var("HOME")
         .or_else(|_| env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
+        .unwrap_or_else(|_| ".".to_string())
+}
+
+fn get_jsonl_path() -> PathBuf {
+    let home = home_dir_string();
     PathBuf::from(home).join(".claude").join("statusline-history.jsonl")
 }
 
@@ -148,9 +152,7 @@ pub fn handle_hook_end() {
     });
 
     // Find the newest JSONL file in ~/.claude/projects/<slug>/
-    let home = env::var("HOME")
-        .or_else(|_| env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
+    let home = home_dir_string();
     let slug = project_dir.replace(['/', '\\'], "-");
     let projects_dir = PathBuf::from(&home).join(".claude").join("projects").join(&slug);
 

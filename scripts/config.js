@@ -3,11 +3,19 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+function getHomeDir() {
+  return process.env.HOME || process.env.USERPROFILE || os.homedir();
+}
+
 function getClaudeConfigDir() {
   const configDir = process.env.CLAUDE_CONFIG_DIR;
   return (configDir && configDir.trim())
     ? configDir
     : path.join(os.homedir(), '.claude');
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function sanitizeSlug(s) {
@@ -45,6 +53,7 @@ function getSettingsPath() {
 
 function atomicWrite(filePath, obj) {
   const tmpPath = filePath + '.tmp';
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
   fs.writeFileSync(tmpPath, JSON.stringify(obj, null, 2));
   try {
@@ -76,7 +85,9 @@ module.exports = {
   getSettingsPath,
   atomicWrite,
   resolveBinary,
+  getHomeDir,
   getClaudeConfigDir,
+  isPlainObject,
   getRealtimeTtySlug,
   getRealtimePaths,
 };

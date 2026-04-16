@@ -3,12 +3,21 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { normalizeProjectSlug } = require('./slug-utils');
+const { getHomeDir } = require('./config');
 
 const JSONL_PATH = path.join(
-  process.env.HOME || process.env.USERPROFILE || os.homedir(),
+  getHomeDir(),
   '.claude',
   'statusline-history.jsonl'
 );
+
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    return fallback;
+  }
+}
 
 function now() {
   return new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -60,11 +69,10 @@ function handleHookEnd() {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', chunk => input += chunk);
   process.stdin.on('end', () => {
-    let reason = 'unknown';
-    try { reason = JSON.parse(input).reason || 'unknown'; } catch (e) {}
+    const reason = safeJsonParse(input, {}).reason || 'unknown';
 
     const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const home = getHomeDir();
     const slug = normalizeProjectSlug(projectDir);
     const projectsDir = path.join(home, '.claude', 'projects', slug);
 
@@ -86,21 +94,20 @@ function handleHookEnd() {
           const lines = fs.readFileSync(newestFile, 'utf8').split('\n');
           for (const line of lines) {
             if (!line.trim()) continue;
-            try {
-              const entry = JSON.parse(line);
-              if (entry.type === 'assistant' && entry.message?.usage) {
-                const u = entry.message.usage;
-                totalIn  += (u.input_tokens || 0)
-                  + Math.round((u.cache_read_input_tokens || 0) * 0.1)
-                  + (u.cache_creation_input_tokens || 0);
-                totalOut += (u.output_tokens || 0);
-                if (!model) model = entry.message.model || '';
-              } else if (entry.type === 'cost') {
-                cost += (entry.cost_usd || 0);
-              } else if (entry.type === 'message_start' && !model) {
-                model = entry.message?.model || '';
-              }
-            } catch (e) {}
+            const entry = safeJsonParse(line);
+            if (!entry) continue;
+            if (entry.type === 'assistant' && entry.message?.usage) {
+              const u = entry.message.usage;
+              totalIn  += (u.input_tokens || 0)
+                + Math.round((u.cache_read_input_tokens || 0) * 0.1)
+                + (u.cache_creation_input_tokens || 0);
+              totalOut += (u.output_tokens || 0);
+              if (!model) model = entry.message.model || '';
+            } else if (entry.type === 'cost') {
+              cost += (entry.cost_usd || 0);
+            } else if (entry.type === 'message_start' && !model) {
+              model = entry.message?.model || '';
+            }
           }
         }
       } catch (e) {}
