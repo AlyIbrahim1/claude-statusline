@@ -1,4 +1,4 @@
-Configure claude-statusline as your Claude Code statusline. This writes the `statusLine` command to `~/.claude/settings.json` (replacing any existing one). Session history hooks come with the plugin, so nothing else is needed.
+Configure claude-statusline as your Claude Code statusline. The plugin already does this at session start when no statusline is set; this command also replaces a statusline you configured yourself. It writes the `statusLine` command to `~/.claude/settings.json`. Session history hooks come with the plugin, so nothing else is needed.
 
 Run the following:
 

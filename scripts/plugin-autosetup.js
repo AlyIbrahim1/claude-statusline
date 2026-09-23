@@ -25,9 +25,6 @@ function pluginAutoSetup(pluginRoot = process.env.CLAUDE_PLUGIN_ROOT, { force = 
     }
   }
 
-  // Already configured; leave user config untouched.
-  if (settings.statusLine && !force) return { ok: true, configured: false };
-
   const script = path.join(pluginRoot, 'statusline.js');
   const binaryPath = resolveBinary();
   if (!binaryPath && !fs.existsSync(script)) return { ok: true, configured: false };
@@ -35,6 +32,13 @@ function pluginAutoSetup(pluginRoot = process.env.CLAUDE_PLUGIN_ROOT, { force = 
   const command = binaryPath
     ? `"${binaryPath}"`
     : `"${process.execPath}" "${script}"`;
+
+  // Plugin updates install into a new version folder next to the old one. A statusLine that
+  // runs another version of this plugin is ours to repoint; any other one is the user's.
+  const current = settings.statusLine && settings.statusLine.command;
+  const otherVersion = typeof current === 'string' && current !== command
+    && current.includes(`"${path.dirname(pluginRoot)}${path.sep}`);
+  if (settings.statusLine && !force && !otherVersion) return { ok: true, configured: false };
 
   settings.statusLine = {
     type: 'command',

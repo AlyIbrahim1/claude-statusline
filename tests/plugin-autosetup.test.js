@@ -48,6 +48,30 @@ describe('plugin-autosetup.js (subprocess)', () => {
     expect(settings.statusLine.command).toMatch(/^"[^"]+"( "[^"]+")?$/);
   });
 
+  test('repoints a statusLine left on an older version of the plugin', () => {
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-cache-'));
+    const [oldRoot, newRoot] = ['1.6.2', '1.7.0'].map(v => path.join(cache, v));
+    for (const root of [oldRoot, newRoot]) {
+      fs.mkdirSync(root);
+      fs.writeFileSync(path.join(root, 'statusline.js'), '');
+    }
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const old = `"${process.execPath}" "${path.join(oldRoot, 'statusline.js')}"`;
+    fs.writeFileSync(settingsPath, JSON.stringify({ statusLine: { type: 'command', command: old } }));
+    try {
+      const { pluginAutoSetup } = require('../scripts/plugin-autosetup');
+      const prev = process.env.CLAUDE_CONFIG_DIR;
+      process.env.CLAUDE_CONFIG_DIR = tmpDir;
+      const result = pluginAutoSetup(newRoot);
+      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev;
+      expect(result.configured).toBe(true);
+      const command = JSON.parse(fs.readFileSync(settingsPath, 'utf8')).statusLine.command;
+      expect(command).not.toContain(oldRoot);
+    } finally {
+      fs.rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
   test('does nothing when statusLine is already set', () => {
     const settingsPath = path.join(tmpDir, 'settings.json');
     const existing = { statusLine: { type: 'command', command: '"existing-tool"' } };
