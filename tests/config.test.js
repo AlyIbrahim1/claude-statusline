@@ -17,7 +17,7 @@ describe('getSettingsPath', () => {
 
   test('uses CLAUDE_CONFIG_DIR when set and non-empty', () => {
     process.env.CLAUDE_CONFIG_DIR = '/custom/dir';
-    expect(getSettingsPath()).toBe('/custom/dir/settings.json');
+    expect(getSettingsPath()).toBe(path.join('/custom/dir', 'settings.json'));
   });
 
   test('falls back to ~/.claude when CLAUDE_CONFIG_DIR is empty string', () => {

@@ -35,7 +35,8 @@ function check(ok, message, detail) {
 }
 
 function run(cmd, cmdArgs, opts = {}) {
-  const r = spawnSync(cmd, cmdArgs, { env, encoding: 'utf8', shell: win, ...opts });
+  // npm is npm.cmd on Windows and needs a shell; node does not, and cmd.exe would mangle `node -e` quoting.
+  const r = spawnSync(cmd, cmdArgs, { env, encoding: 'utf8', shell: win && cmd === 'npm', ...opts });
   if (r.status !== 0) check(false, `${cmd} ${cmdArgs.join(' ')} exited ${r.status}`, `${r.stdout}\n${r.stderr}`);
   return r;
 }
