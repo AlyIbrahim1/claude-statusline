@@ -15,20 +15,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies
         run: |
-          npm install -D http-server playwright
+          npm install --no-save http-server playwright
           npx playwright install --with-deps chromium
-
-      - name: Create assets directory
-        run: mkdir -p assets
 
       - name: Serve and Capture
         run: |
@@ -39,7 +36,7 @@ jobs:
           kill $SERVER_PID
 
       - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403 # v5
         with:
           commit_message: "chore: update dashboard screenshot [skip ci]"
           file_pattern: '.github/assets/dashboard-preview.png'

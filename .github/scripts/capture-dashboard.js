@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
   // Wait for all CSS animations (fadeUp on cards + table section) to finish
   await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished)));
 
-  await page.screenshot({ path: 'assets/dashboard-preview.png', fullPage: true });
+  await page.screenshot({ path: '.github/assets/dashboard-preview.png', fullPage: true });
 
   await browser.close();
 })();
