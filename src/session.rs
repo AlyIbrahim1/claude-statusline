@@ -95,6 +95,26 @@ pub fn claude_dir() -> PathBuf {
 }
 
 /// State file for a session, or None when the id is empty or not a plain file-name token.
+/// State files untouched this long are deleted without a history record. SessionEnd
+/// finalizes files far sooner; this covers setups without the hook (disable-history).
+const ABANDONED_SECS: u64 = 7 * 24 * 60 * 60;
+
+/// Deletes abandoned state files. Called once per new session, not per render.
+pub fn prune_abandoned(sessions_dir: &Path) {
+    let Ok(entries) = fs::read_dir(sessions_dir) else { return };
+    for entry in entries.flatten() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+            .map_or(false, |d| d.as_secs() >= ABANDONED_SECS);
+        if old {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
 pub fn state_path(claude_dir: &Path, session: &str) -> Option<PathBuf> {
     let safe = !session.is_empty()
         && session.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');

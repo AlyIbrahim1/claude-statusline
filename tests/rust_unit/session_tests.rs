@@ -189,3 +189,17 @@ fn git_info_unborn_branch_has_label_but_no_count() {
     assert!(st.git.is_empty());
     fs::remove_dir_all(&d).ok();
 }
+
+#[test]
+fn prune_abandoned_deletes_only_week_old_state_files() {
+    let d = tmp_dir("prune");
+    let (fresh, old) = (d.join("fresh.json"), d.join("old.json"));
+    fs::write(&fresh, "{}").unwrap();
+    fs::write(&old, "{}").unwrap();
+    let week_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+    fs::File::options().write(true).open(&old).unwrap().set_modified(week_ago).unwrap();
+    prune_abandoned(&d);
+    assert!(fresh.exists());
+    assert!(!old.exists());
+    fs::remove_dir_all(&d).ok();
+}

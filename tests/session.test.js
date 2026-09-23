@@ -2,7 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { statePath, load, save, gitInfo } = require('../scripts/session');
+const { statePath, load, save, gitInfo, pruneAbandoned } = require('../scripts/session');
 
 const git = (cwd, ...args) => execFileSync('git', [
   '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args,
@@ -26,6 +26,17 @@ describe('session state', () => {
     expect(load(file).tout).toBe(3);
     fs.writeFileSync(file, '[1,2]');
     expect(load(file)).toMatchObject({ files: {}, tin: 0, tcache: 0, tout: 0, git: {}, start: 0 });
+  });
+
+  test('pruneAbandoned deletes only week-old state files', () => {
+    const fresh = path.join(tmp, 'fresh.json');
+    const old = path.join(tmp, 'old.json');
+    fs.writeFileSync(fresh, '{}');
+    fs.writeFileSync(old, '{}');
+    const weekAgo = new Date(Date.now() - 8 * 24 * 3600 * 1000);
+    fs.utimesSync(old, weekAgo, weekAgo);
+    pruneAbandoned(tmp);
+    expect(fs.readdirSync(tmp)).toEqual(['fresh.json']);
   });
 
   test('gitInfo reads branch, counts session commits, handles packed refs and detached HEAD', () => {

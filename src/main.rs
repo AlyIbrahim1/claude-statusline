@@ -333,7 +333,13 @@ fn render(input: &str) -> Option<String> {
     let state_file = session::state_path(&session::claude_dir(), &session);
     let loaded = state_file.as_deref().map(session::load).unwrap_or_default();
     let mut state = loaded.clone();
-    if state_file.is_some() {
+    if let Some(path) = &state_file {
+        if loaded.start == 0 {
+            // First render of this session.
+            if let Some(dir) = path.parent() {
+                session::prune_abandoned(dir);
+            }
+        }
         state.note_input(&data, &model, &dir);
     }
 

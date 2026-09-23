@@ -158,7 +158,10 @@ process.stdin.on('end', () => {
     const stateFile = sessionState.statePath(sessionState.claudeDir(), session);
     const state = sessionState.load(stateFile); // empty state when there is no session id
     const loaded = JSON.stringify(state);
-    if (stateFile) sessionState.noteInput(state, data, model, dir);
+    if (stateFile) {
+      if (!state.start) sessionState.pruneAbandoned(path.dirname(stateFile)); // first render of this session
+      sessionState.noteInput(state, data, model, dir);
+    }
 
     // Session cost — only show for API key users; rate_limits presence means subscription
     const isSubscription = data.rate_limits !== undefined;

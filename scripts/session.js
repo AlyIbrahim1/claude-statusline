@@ -8,6 +8,22 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { getClaudeConfigDir } = require('./config');
 
+// State files untouched this long are deleted without a history record. SessionEnd
+// finalizes files far sooner; this covers setups without the hook (disable-history).
+const ABANDONED_SECS = 7 * 24 * 60 * 60;
+
+// Deletes abandoned state files. Called once per new session, not per render.
+function pruneAbandoned(sessionsDir) {
+  let names = [];
+  try { names = fs.readdirSync(sessionsDir); } catch (e) { return; }
+  for (const name of names) {
+    const file = path.join(sessionsDir, name);
+    try {
+      if ((Date.now() - fs.statSync(file).mtimeMs) / 1000 >= ABANDONED_SECS) fs.unlinkSync(file);
+    } catch (e) {}
+  }
+}
+
 function statePath(claudeDir, session) {
   if (!session || !/^[A-Za-z0-9_-]+$/.test(session)) return null;
   return path.join(claudeDir, 'statusline', 'sessions', `${session}.json`);
@@ -172,4 +188,4 @@ function gitInfo(dir, state) {
   return { branch: head.branch, commits: cur.n };
 }
 
-module.exports = { claudeDir: getClaudeConfigDir, statePath, load, save, updateTokens, gitInfo, noteInput, nowSecs };
+module.exports = { claudeDir: getClaudeConfigDir, statePath, load, save, pruneAbandoned, updateTokens, gitInfo, noteInput, nowSecs };

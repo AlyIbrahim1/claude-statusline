@@ -106,7 +106,7 @@ Everything lives in one folder, `~/.claude/statusline/` (or `$CLAUDE_CONFIG_DIR/
 | `sessions/<id>.json` | Working state of a running session; deleted when the session ends |
 | `dashboard.html` | The web dashboard; written once and updated only when a new version changes it |
 
-A session is written to history when it ends. State left behind by a session that never ended cleanly (crash, killed terminal) is written and removed after 24 hours. Sessions that used no tokens are not recorded. Files from older versions (`statusline-history.jsonl`, `statusline-tokcache-*`, `statusline-session-*`) are converted and removed automatically.
+A session is written to history when it ends. State left behind by a session that never ended cleanly (crash, killed terminal) is written and removed after 24 hours. With history disabled, session state is deleted after 7 days without being recorded. Sessions that used no tokens are not recorded. Files from older versions (`statusline-history.jsonl`, `statusline-tokcache-*`, `statusline-session-*`) are converted and removed automatically.
 
 ### Claude Code slash commands
 
