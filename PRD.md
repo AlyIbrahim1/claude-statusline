@@ -60,13 +60,14 @@
 ## 5. GitHub Workflows
 
 ### 5.1. CI (`ci.yml`)
-- **Trigger:** Every push and pull request to `main`.
-- **Purpose:** Runs the Jest test suite (154 tests via `npm ci && npm test`) against Node.js 18, 20, and 22 in a matrix to catch regressions across supported runtimes before merge. The Rust test suite (108 unit tests) is run per-platform with `--test-threads=1` (sequential, to prevent failures from global env var mutation); on success, CI dispatches a `release-ready` repository dispatch event that triggers the release workflow when the commit is a version tag. CI also runs `check-version-alignment.js` to enforce that `package.json`, `package-lock.json`, `Cargo.toml`, and both plugin manifest files (`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`) all declare the same version.
+- **Trigger:** Every push and pull request to `main`, and called by `release.yml` against the tagged commit.
+- **Purpose:** Checks version alignment (`check-version-alignment.js`: `package.json`, `package-lock.json`, `Cargo.toml`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`), that `npm ci` works, and `npm audit` for high-severity advisories in runtime dependencies. Runs Jest on Node 18, 20, 22 and 24 (Linux) plus Node 22 on Windows and macOS. On Linux, Windows and macOS it runs the Rust tests (`--test-threads=1`), clippy's correctness and suspicious lints, a release build, and `.github/scripts/smoke-install.js`: packs the package, installs it with `npm install -g` into a throwaway prefix and config dir, and drives the real statusLine command, SessionEnd hook (twice) and `claude-statusline uninstall` for both the binary and the JS fallback. Linux also builds the static musl binary.
 
 ### 5.2. Release (`release.yml`)
-- **Trigger:** A `release-ready` repository dispatch event sent by CI after all tests pass on a version-tag commit. The tag push itself initiates the pipeline via CI, but the release jobs do not start until CI explicitly signals readiness — ensuring no release fires before the test suite is green.
-- **Purpose:** Cross-compiles the Rust binary for all five supported platform targets, sets the version from the tag, and publishes each platform-specific npm package (`@alyibrahim/claude-statusline-{platform}-{arch}`) followed by the root package once all platform jobs succeed. Skips re-publishing if a given version is already present on npm (idempotent).
-- **Targets:** `linux-x64`, `linux-arm64` (via `cross`), `darwin-x64`, `darwin-arm64` (macOS 14 runner), `win32-x64`.
+- **Trigger:** Pushing a `v*` tag.
+- **Gates, in order (each blocks everything after it):** the tag equals the `package.json` version, all versions are aligned, the tagged commit is on `main`, and the version is not already on npm; the full CI workflow against the tagged commit; each binary built and run on its own OS and architecture (Linux binaries must be static); platform packages published; `smoke-install.js --expect-binary` on all five platforms installing from the registry; only then the root package is published.
+- **Publishing:** All npm publishes use `--provenance` and run in the `npm` GitHub environment (add required reviewers there for a manual approval step). Re-running a partly failed release skips platform packages that are already published.
+- **Targets:** `linux-x64`, `linux-arm64` (native arm runner), `darwin-x64` (Intel runner), `darwin-arm64`, `win32-x64`.
 
 ### 5.3. Capture Dashboard (`capture-dashboard.yml`)
 - **Trigger:** Any push to `main` that modifies files under `dashboard-design/`.

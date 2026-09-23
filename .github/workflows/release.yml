@@ -1,200 +1,176 @@
 name: Release
 
+# Pushing a v* tag releases it. Order of gates, each blocking everything after it:
+#   verify        tag == package.json version, all versions aligned, tag commit is on main
+#   ci            the full CI workflow against the tagged commit
+#   build         each platform binary built and run on its own OS/arch (nothing published yet)
+#   publish-binaries  platform packages (harmless alone: nothing installs them directly)
+#   smoke-install npm install -g of the root package on every platform, using the published binaries
+#   publish-root  the package users install; only after all of the above passed
 on:
-  repository_dispatch:
-    types: [release-ready]
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
-  linux-x64:
+  verify:
     runs-on: ubuntu-latest
-    env:
-      RELEASE_TAG: ${{ github.event.client_payload.tag }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.client_payload.sha }}
-      # musl: a static binary with no glibc version requirement (runs on Alpine and older distros)
-      - name: Add target
-        run: rustup target add x86_64-unknown-linux-musl
-      - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-musl
-      - name: Copy binary and set version
-        run: |
-          cp target/x86_64-unknown-linux-musl/release/statusline packages/linux-x64/statusline
-          VERSION=${RELEASE_TAG#v}
-          cd packages/linux-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
-      - uses: actions/setup-node@v4
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Publish linux-x64
+          node-version: 22
+      - name: Tag matches the committed versions
         run: |
           VERSION=${RELEASE_TAG#v}
-          if npm view @alyibrahim/claude-statusline-linux-x64@$VERSION version 2>/dev/null; then
-            echo "Already published, skipping"
-          else
-            npm publish packages/linux-x64/ --access public
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$PKG" != "$VERSION" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match package.json version $PKG. Bump the version, commit, then tag."
+            exit 1
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          node scripts/check-version-alignment.js
+      - name: Tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$RELEASE_TAG points at a commit that is not on main."
+            exit 1
+          fi
+      - name: Version is not already fully released
+        run: |
+          VERSION=${RELEASE_TAG#v}
+          if npm view "@alyibrahim/claude-statusline@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::@alyibrahim/claude-statusline@$VERSION is already on npm. Bump the version."
+            exit 1
+          fi
 
-  linux-arm64:
+  ci:
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: ci
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Every binary is built on a runner that can execute it, so each one is run before publishing.
+          - { pkg: linux-x64,    os: ubuntu-latest,    target: x86_64-unknown-linux-musl,  bin: statusline }
+          - { pkg: linux-arm64,  os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, bin: statusline }
+          - { pkg: darwin-x64,   os: macos-15-intel,   target: x86_64-apple-darwin,        bin: statusline }
+          - { pkg: darwin-arm64, os: macos-14,         target: aarch64-apple-darwin,       bin: statusline }
+          - { pkg: win32-x64,    os: windows-latest,   target: x86_64-pc-windows-msvc,     bin: statusline.exe }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Run the binary
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude"
+          OUT=$(echo '{"session_id":"smoke","model":{"display_name":"SmokeModel"},"workspace":{"current_dir":"."}}' | "$BIN")
+          echo "$OUT"
+          grep -q SmokeModel <<<"$OUT"
+          echo '{}' | "$BIN" hook start
+      - name: Linux binary is static
+        if: runner.os == 'Linux'
+        run: file "target/${{ matrix.target }}/release/statusline" | tee /dev/stderr | grep -q 'static'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.pkg }}
+          path: target/${{ matrix.target }}/release/${{ matrix.bin }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-binaries:
+    needs: build
     runs-on: ubuntu-latest
-    env:
-      RELEASE_TAG: ${{ github.event.client_payload.tag }}
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          ref: ${{ github.event.client_payload.sha }}
-      - name: Install cross
-        run: cargo install cross --locked --version 0.2.5
-      - name: Build
-        run: cross build --release --target aarch64-unknown-linux-musl
-      - name: Copy binary and set version
-        run: |
-          cp target/aarch64-unknown-linux-musl/release/statusline packages/linux-arm64/statusline
-          VERSION=${RELEASE_TAG#v}
-          cd packages/linux-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
-      - name: Publish linux-arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+      - name: Publish platform packages
         run: |
           VERSION=${RELEASE_TAG#v}
-          if npm view @alyibrahim/claude-statusline-linux-arm64@$VERSION version 2>/dev/null; then
-            echo "Already published, skipping"
-          else
-            npm publish packages/linux-arm64/ --access public
-          fi
+          for pkg in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            cp artifacts/$pkg/* packages/$pkg/
+            chmod 755 packages/$pkg/statusline* # artifacts do not keep the executable bit
+            (cd packages/$pkg && npm version "$VERSION" --no-git-tag-version --allow-same-version)
+            # Re-runs of a partly failed release skip what is already published.
+            if npm view "@alyibrahim/claude-statusline-$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "@alyibrahim/claude-statusline-$pkg@$VERSION already published, skipping"
+            else
+              npm publish "packages/$pkg/" --access public --provenance
+            fi
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  darwin-x64:
-    runs-on: macos-14
-    env:
-      RELEASE_TAG: ${{ github.event.client_payload.tag }}
+  smoke-install:
+    needs: publish-binaries
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-14, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          ref: ${{ github.event.client_payload.sha }}
-      - name: Add target
-        run: rustup target add x86_64-apple-darwin
-      - name: Build
-        run: cargo build --release --target x86_64-apple-darwin
-      - name: Copy binary and set version
+          node-version: 22
+      - name: Wait for the platform package on the registry
+        shell: bash
         run: |
-          cp target/x86_64-apple-darwin/release/statusline packages/darwin-x64/statusline
-          VERSION=${RELEASE_TAG#v}
-          cd packages/darwin-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Publish darwin-x64
-        run: |
-          VERSION=${RELEASE_TAG#v}
-          if npm view @alyibrahim/claude-statusline-darwin-x64@$VERSION version 2>/dev/null; then
-            echo "Already published, skipping"
-          else
-            npm publish packages/darwin-x64/ --access public
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  darwin-arm64:
-    runs-on: macos-14
-    env:
-      RELEASE_TAG: ${{ github.event.client_payload.tag }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.client_payload.sha }}
-      - name: Add target
-        run: rustup target add aarch64-apple-darwin
-      - name: Build
-        run: cargo build --release --target aarch64-apple-darwin
-      - name: Copy binary and set version
-        run: |
-          cp target/aarch64-apple-darwin/release/statusline packages/darwin-arm64/statusline
-          VERSION=${RELEASE_TAG#v}
-          cd packages/darwin-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Publish darwin-arm64
-        run: |
-          VERSION=${RELEASE_TAG#v}
-          if npm view @alyibrahim/claude-statusline-darwin-arm64@$VERSION version 2>/dev/null; then
-            echo "Already published, skipping"
-          else
-            npm publish packages/darwin-arm64/ --access public
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  win32-x64:
-    runs-on: windows-latest
-    env:
-      RELEASE_TAG: ${{ github.event.client_payload.tag }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.client_payload.sha }}
-      - name: Build
-        run: cargo build --release --target x86_64-pc-windows-msvc
-      - name: Copy binary and set version
-        shell: pwsh
-        run: |
-          Copy-Item target/x86_64-pc-windows-msvc/release/statusline.exe packages/win32-x64/statusline.exe
-          $VERSION = $env:RELEASE_TAG -replace '^v', ''
-          Set-Location packages/win32-x64
-          npm version $VERSION --no-git-tag-version --allow-same-version
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Publish win32-x64
-        shell: pwsh
-        run: |
-          $VERSION = $env:RELEASE_TAG -replace '^v', ''
-          $existing = npm view "@alyibrahim/claude-statusline-win32-x64@$VERSION" version 2>$null
-          if ($existing) {
-            Write-Host "Already published, skipping"
-          } else {
-            npm publish packages/win32-x64/ --access public
-          }
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PKG="@alyibrahim/claude-statusline-$(node -p 'process.platform + "-" + process.arch')@${RELEASE_TAG#v}"
+          for i in $(seq 1 30); do
+            npm view "$PKG" version >/dev/null 2>&1 && exit 0
+            echo "waiting for $PKG ($i)"; sleep 10
+          done
+          echo "::error::$PKG never appeared on the registry"; exit 1
+      - run: node .github/scripts/smoke-install.js --expect-binary
 
   publish-root:
-    needs: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64]
+    needs: smoke-install
     runs-on: ubuntu-latest
-    env:
-      RELEASE_TAG: ${{ github.event.client_payload.tag }}
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          ref: ${{ github.event.client_payload.sha }}
-      - name: Set versions
-        run: |
-          VERSION=${RELEASE_TAG#v}
-          npm version $VERSION --no-git-tag-version --allow-same-version
-          for pkg in packages/linux-x64 packages/linux-arm64 packages/darwin-x64 packages/darwin-arm64 packages/win32-x64; do
-            cd $pkg && npm version $VERSION --no-git-tag-version --allow-same-version && cd -
-          done
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
-      - name: Publish root package
-        run: |
-          VERSION=${RELEASE_TAG#v}
-          if npm view @alyibrahim/claude-statusline@$VERSION version 2>/dev/null; then
-            echo "Already published, skipping"
-          else
-            npm publish --access public
-          fi
+      - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

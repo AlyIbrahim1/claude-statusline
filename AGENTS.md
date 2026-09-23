@@ -55,13 +55,13 @@ Before committing a version bump, check whether `README.md` needs updating — n
 
 ## Release
 
-Tagging a version triggers the CI pipeline which publishes to npm automatically:
+Pushing a `v*` tag runs `.github/workflows/release.yml`. It refuses tags that do not match `package.json` or point off `main`, re-runs all of CI on the tagged commit, builds and runs every platform binary, publishes the platform packages, smoke-installs the package from the registry on every platform (`.github/scripts/smoke-install.js`), and only then publishes the root package:
 
 ```bash
 git tag v1.x.x && git push origin main --tags
 ```
 
-Before tagging: bump version in both `package.json` (including the ones in `/packages`) and `Cargo.toml`, regenerate `package-lock.json`, run `npm run check-versions`, run both test suites (`npm test` and `cargo test`), and check `README.md` for stale content.
+Before tagging: bump the version (see Version bumps; `packages/*/package.json` stay at `0.0.0` and are set by the release), run `npm run check-versions`, both test suites, `node .github/scripts/smoke-install.js --local-binary target/release/statusline` after `cargo build --release`, and check `README.md` for stale content.
 
 ## Conventions
 

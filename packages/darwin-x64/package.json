@@ -2,6 +2,7 @@
   "name": "@alyibrahim/claude-statusline-darwin-x64",
   "version": "0.0.0",
   "description": "macOS x64 binary for @alyibrahim/claude-statusline",
+  "repository": { "type": "git", "url": "https://github.com/AlyIbrahim1/claude-statusline.git" },
   "os": ["darwin"],
   "cpu": ["x64"],
   "files": ["statusline"],
