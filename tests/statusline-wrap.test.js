@@ -2,7 +2,6 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { normalizeProjectSlug } = require('../scripts/slug-utils');
 
 const STATUSLINE = path.join(__dirname, '../statusline.js');
 
@@ -27,12 +26,6 @@ function runStatuslineRaw(input, env = {}) {
     input,
     env: { ...process.env, ...env },
   });
-}
-
-function writeProjectSessionJsonl(claudeDir, absDir, session, text) {
-  const projectDir = path.join(claudeDir, 'projects', normalizeProjectSlug(absDir));
-  fs.mkdirSync(projectDir, { recursive: true });
-  fs.writeFileSync(path.join(projectDir, `${session}.jsonl`), text);
 }
 
 describe('statusline wrapping', () => {
@@ -94,96 +87,80 @@ describe('statusline wrapping', () => {
     expect(result.stdout.toString()).toBe('');
   });
 
-  test('recovers from malformed token cache and ignores malformed/incomplete JSONL lines', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-wrap-cache-'));
-    const absDir = path.join(tmp, 'workspace', 'project');
-    const session = 'sess-wrap-1';
-    fs.mkdirSync(absDir, { recursive: true });
+  test('reads transcript_path, dedupes repeated usage, skips malformed/incomplete lines', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-wrap-tokens-'));
+    const transcript = path.join(tmp, 'sess-wrap-1.jsonl');
+    const usage = { input_tokens: 7, output_tokens: 3, cache_read_input_tokens: 2000, cache_creation_input_tokens: 1 };
+    const line = JSON.stringify({ type: 'assistant', requestId: 'r1', message: { id: 'm1', usage } });
+    fs.writeFileSync(transcript, [
+      line,
+      line, // same message repeated for the next content block
+      '{bad json line "usage" "assistant"',
+      // No trailing newline: incomplete, must be skipped.
+      '{"type":"assistant","message":{"id":"m9","usage":{"input_tokens":999,"output_tokens":999}}}',
+    ].join('\n'));
+    fs.mkdirSync(path.join(tmp, 'statusline', 'sessions'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'statusline', 'sessions', 'sess-wrap-1.json'), '{not valid json');
 
-    const jsonl = [
-      JSON.stringify({
-        type: 'assistant',
-        message: { usage: { input_tokens: 10, output_tokens: 5 } },
-      }),
-      '{bad json line',
-      JSON.stringify({
-        type: 'assistant',
-        message: {
-          usage: {
-            input_tokens: 7,
-            output_tokens: 3,
-            cache_read_input_tokens: 10,
-            cache_creation_input_tokens: 1,
-          },
-        },
-      }),
-      // Last line intentionally has no trailing newline; parser should skip it as incomplete.
-      '{"type":"assistant","message":{"usage":{"input_tokens":999,"output_tokens":999}}}',
-    ].join('\n');
-
-    writeProjectSessionJsonl(tmp, absDir, session, jsonl);
-    fs.writeFileSync(path.join(tmp, `statusline-tokcache-${session}.json`), '{not valid json');
-
-    const input = JSON.stringify({
+    const result = runStatusline({
       model: { display_name: 'M' },
-      workspace: { current_dir: absDir },
-      session_id: session,
-      context_window: { remaining_percentage: 90, total_input_tokens: 0, total_output_tokens: 0 },
-    });
-
-    const result = runStatuslineRaw(input, { CLAUDE_CONFIG_DIR: tmp });
+      session_id: 'sess-wrap-1',
+      transcript_path: transcript,
+      context_window: { remaining_percentage: 90, total_input_tokens: 5000, total_output_tokens: 5000 },
+    }, { CLAUDE_CONFIG_DIR: tmp, COLUMNS: '200' });
     expect(result.status).toBe(0);
 
-    const out = result.stdout.toString();
-    expect(out).toContain('19');
-    expect(out).toContain('8');
-    expect(out).toContain('↓');
-    expect(out).toContain('↑');
+    const out = result.stdout.toString().replace(/\x1b\[[0-9;]*m/g, '');
+    expect(out).toContain('8↓ + 2.0k cache 3↑');
 
-    const cache = JSON.parse(fs.readFileSync(path.join(tmp, `statusline-tokcache-${session}.json`), 'utf8'));
-    expect(cache.totalIn).toBe(19);
-    expect(cache.totalOut).toBe(8);
-    expect(cache.offset).toBeGreaterThan(0);
+    const state = JSON.parse(fs.readFileSync(path.join(tmp, 'statusline', 'sessions', 'sess-wrap-1.json'), 'utf8'));
+    expect([state.tin, state.tcache, state.tout]).toEqual([8, 2000, 3]);
+    expect(Object.keys(state.files)).toEqual([transcript]);
 
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  test('uses byte-offset cache across renders and accumulates totals from appended lines', () => {
+  test('state cursor makes renders incremental and counts subagent transcripts', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-wrap-offset-'));
-    const absDir = path.join(tmp, 'workspace', 'project');
-    const session = 'sess-wrap-2';
-    fs.mkdirSync(absDir, { recursive: true });
-
-    const line1 = `${JSON.stringify({
-      type: 'assistant',
-      message: { usage: { input_tokens: 100, output_tokens: 50 } },
-    })}\n`;
-
-    writeProjectSessionJsonl(tmp, absDir, session, line1);
-
-    const input = JSON.stringify({
+    const transcript = path.join(tmp, 'sess-wrap-2.jsonl');
+    const entry = (id, i, o) => `${JSON.stringify({ type: 'assistant', message: { id, usage: { input_tokens: i, output_tokens: o } } })}\n`;
+    fs.writeFileSync(transcript, entry('m1', 100, 50));
+    const input = {
       model: { display_name: 'M' },
-      workspace: { current_dir: absDir },
-      session_id: session,
-      context_window: { remaining_percentage: 85, total_input_tokens: 0, total_output_tokens: 0 },
-    });
+      session_id: 'sess-wrap-2',
+      transcript_path: transcript,
+    };
+    const plain = r => r.stdout.toString().replace(/\x1b\[[0-9;]*m/g, '');
 
-    const r1 = runStatuslineRaw(input, { CLAUDE_CONFIG_DIR: tmp });
-    expect(r1.status).toBe(0);
-    expect(r1.stdout.toString()).toContain('100');
-    expect(r1.stdout.toString()).toContain('50');
+    expect(plain(runStatusline(input, { CLAUDE_CONFIG_DIR: tmp }))).toContain('100↓ 50↑');
 
-    const projectFile = path.join(tmp, 'projects', normalizeProjectSlug(absDir), `${session}.jsonl`);
-    fs.appendFileSync(projectFile, `${JSON.stringify({
-      type: 'assistant',
-      message: { usage: { input_tokens: 20, output_tokens: 10 } },
-    })}\n`);
+    fs.appendFileSync(transcript, entry('m2', 20, 10));
+    const subs = path.join(tmp, 'sess-wrap-2', 'subagents');
+    fs.mkdirSync(subs, { recursive: true });
+    fs.writeFileSync(path.join(subs, 'agent-x.jsonl'), entry('m3', 5, 5));
+    expect(plain(runStatusline(input, { CLAUDE_CONFIG_DIR: tmp }))).toContain('125↓ 65↑');
 
-    const r2 = runStatuslineRaw(input, { CLAUDE_CONFIG_DIR: tmp });
-    expect(r2.status).toBe(0);
-    expect(r2.stdout.toString()).toContain('120');
-    expect(r2.stdout.toString()).toContain('60');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
 
+  test('shows effort from stdin and hides it when absent', () => {
+    const plain = r => r.stdout.toString().replace(/\x1b\[[0-9;]*m/g, '');
+    const base = { model: { display_name: 'M' }, session_id: '' };
+    expect(plain(runStatusline({ ...base, effort: { level: 'xhigh' } }))).toContain('M [XH]');
+    expect(plain(runStatusline(base))).not.toContain('[');
+  });
+
+  test('labels directories outside home without a tilde', () => {
+    const plain = r => r.stdout.toString().replace(/\x1b\[[0-9;]*m/g, '');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-wrap-dir-'));
+    const dir = path.join(tmp, 'parent', 'proj');
+    fs.mkdirSync(dir, { recursive: true });
+    const out = plain(runStatusline(
+      { model: { display_name: 'M' }, session_id: '', workspace: { current_dir: dir } },
+      { HOME: path.join(tmp, 'home') },
+    ));
+    expect(out).toContain('parent/proj');
+    expect(out).not.toContain('~/');
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 

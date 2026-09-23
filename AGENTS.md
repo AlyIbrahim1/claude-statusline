@@ -23,6 +23,8 @@ Two independent halves that never call each other, sharing only the settings pat
 
 **Input model** (`src/status_model.rs`): parses stdin JSON into a typed struct.
 
+**Session state** (`src/session.rs`, mirrored by `scripts/session.js`): per-session file at `<config>/statusline/sessions/<session_id>.json` holding transcript read cursors, deduplicated token totals (`tin` = input + cache writes, `tcache` = cache reads, `tout` = output) and git commit baselines. Tokens are read incrementally from stdin `transcript_path` plus `<transcript stem>/subagents/*.jsonl`; adjacent entries with the same `message.id:requestId` are counted once. Git branch/SHA are read from `.git` directly; `git` is spawned only for unusual layouts and for `rev-list --count` when HEAD moves. Both implementations must produce identical output and state.
+
 **Runtime half** (`statusline.js`): invoked by Claude Code at runtime. Reads JSON from stdin, renders a 2-line ANSI statusline to stdout. Has a 3-second timeout guard on stdin. Silently discards JSON parse errors — must never crash Claude Code.
 
 **Lifecycle half** (`scripts/`): runs at install/uninstall time and via the CLI.
@@ -68,14 +70,14 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 - Setup validates Node and script paths against unsafe shell characters (backticks, `$`, `!`, etc.) because the command is embedded in JSON as a shell string
 - CI guard in `setup.js`: auto-setup is skipped unless `force=true` or `npm_config_global=true`, so local `npm install` does not modify settings
 - Context window display normalizes by dividing raw context by `0.835` to account for the 16.5% auto-compact buffer
-- Effort level is read from `CLAUDE_CODE_EFFORT_LEVEL` env var first, then falls back to settings.json
+- Effort level comes only from stdin `effort.level`
 - All settings-reading functions (setup, uninstall, toggleHistory, getDashboardMode, setDashboardMode) validate that parsed settings.json is a plain object before proceeding — prevents crashes on null, array, or string JSON values
 
 ## Tests
 
-140 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
+136 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
-83 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (69), `history_tests.rs` (9), `history_tui_tests.rs` (5). Run with `cargo test -- --test-threads=1`.
+91 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (65), `session_tests.rs` (12), `history_tests.rs` (9), `history_tui_tests.rs` (5). Run with `cargo test -- --test-threads=1`.
 
 ## Commits
 

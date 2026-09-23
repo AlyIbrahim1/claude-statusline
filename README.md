@@ -51,18 +51,18 @@ claude-statusline setup
 
 **Line 1** — Model name · Effort level · Directory `(branch +commits)` · Context bar
 
-**Line 2** — Weekly token usage · 5h usage · Reset countdown *(Pro/Max)* — or — Session cost *(API key)* · Session tokens `X↓ Y↑`
+**Line 2** — Weekly token usage · 5h usage · Reset countdown *(Pro/Max)* — or — Session cost *(API key)* · Session tokens `X↓ + C cache Y↑`
 
 | Feature | Details |
 |---|---|
 | Context bar | Normalized to usable % — accounts for the auto-compact buffer |
 | Rate limits | Shows 5h and weekly usage with color-coded thresholds |
 | Session cost | Displayed only for API key users, hidden for subscribers |
-| Session tokens | Real-time via JSONL offset caching — split input/output display (`X↓ Y↑`), formatted as `k` or `M` for large counts |
-| Effort level | Reads `CLAUDE_CODE_EFFORT_LEVEL` env var or `settings.json` |
-| Git branch | Detected automatically, silently absent if not a git repo |
+| Session tokens | Read incrementally from the session transcript and its subagent transcripts, with repeated entries counted once. Shows new input (including cache writes), cache reads and output separately (`X↓ + C cache Y↑`) |
+| Effort level | Live value from Claude Code, including mid-session `/effort` changes (`[L]` `[M]` `[H]` `[XH]` `[MAXX]`) |
+| Git branch | Read straight from `.git` (no `git` process per render); short SHA when detached; absent outside a repo |
 | Session commits | Shows `+N` next to the branch for commits made during the current session |
-| Directory label | Displays as `~/parent/dir` so you always know which project you're in |
+| Directory label | Displays as `~/parent/dir` (or `parent/dir` outside your home) so you always know which project you're in |
 | Terminal wrapping | Lines wrap to fit terminal width — reads `COLUMNS` or `stdout.columns` automatically |
 
 ---
@@ -187,7 +187,7 @@ See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform 
 | API calls | None — reads Claude's stdin directly | Poll OAuth endpoint, risk rate limits |
 | Subscription-aware | Shows usage/resets for Pro/Max, cost for API | Treat everyone as API user |
 | Context bar | Usable % after auto-compact buffer | Raw remaining % |
-| Session tokens | Real-time via JSONL offset cache, split I/O (`X↓ Y↑`) | Stale stdin snapshot or none |
+| Session tokens | Incremental transcript reads with duplicate entries counted once, including subagents | Stale stdin snapshot or none |
 | Session commits | Tracks git commits made this session | — |
 | Session history | Terminal TUI + browser dashboard, per-project filtering, zero dependencies | — |
 

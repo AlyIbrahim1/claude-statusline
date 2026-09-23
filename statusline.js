@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // Claude Code Statusline
-// Shows: model | current task | directory | context usage
+// Shows: model | directory | context usage, then usage/cost/tokens
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
-const { normalizeProjectSlug } = require('./scripts/slug-utils');
 const { getHomeDir } = require('./scripts/config');
+const sessionState = require('./scripts/session');
 
 function stripSgr(s) {
   return String(s).replace(/\x1b\[[0-9;]*m/g, '');
@@ -109,57 +108,6 @@ if (cmd === 'history') {
   }
 }
 
-// Reads cumulative token totals from the session JSONL file, using a byte-offset
-// cache so only new bytes are parsed on each invocation (O(new bytes) not O(file)).
-// Returns { totalIn, totalOut } or null on any error.
-function readSessionTokens(claudeDir, session, absDir) {
-  if (!session) return null;
-  const slug = normalizeProjectSlug(absDir);
-  const jsonlPath = path.join(claudeDir, 'projects', slug, `${session}.jsonl`);
-  const cachePath = path.join(claudeDir, `statusline-tokcache-${session}.json`);
-  try {
-    const fileSize = fs.statSync(jsonlPath).size;
-    let totalIn = 0, totalOut = 0, cachedOffset = 0;
-    try {
-      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-      totalIn = cached.totalIn || 0;
-      totalOut = cached.totalOut || 0;
-      cachedOffset = Math.min(cached.offset || 0, fileSize);
-    } catch (e) {}
-    if (fileSize > cachedOffset) {
-      const fd = fs.openSync(jsonlPath, 'r');
-      const buf = Buffer.alloc(fileSize - cachedOffset);
-      const bytesRead = fs.readSync(fd, buf, 0, buf.length, cachedOffset);
-      fs.closeSync(fd);
-      const content = buf.subarray(0, bytesRead).toString('utf8');
-      // Exclude the last element: it's either an empty string (content ends with \n)
-      // or a potentially incomplete line (file was mid-write).
-      const safeLines = content.split('\n').slice(0, -1);
-      for (const line of safeLines) {
-        if (!line.trim()) continue;
-        try {
-          const entry = JSON.parse(line);
-          if (entry.type === 'assistant' && entry.message?.usage) {
-            const u = entry.message.usage;
-            totalIn  += (u.input_tokens || 0) + Math.round((u.cache_read_input_tokens || 0) * 0.1) + (u.cache_creation_input_tokens || 0);
-            totalOut += (u.output_tokens || 0);
-          }
-        } catch (e) {}
-      }
-      // Advance offset by the bytes of all complete lines (each terminated by \n)
-      const processed = safeLines.join('\n') + '\n';
-      try {
-        fs.writeFileSync(cachePath, JSON.stringify({
-          totalIn, totalOut, offset: cachedOffset + Buffer.from(processed, 'utf8').length,
-        }));
-      } catch (e) {}
-    }
-    return { totalIn, totalOut };
-  } catch (e) {
-    return null;
-  }
-}
-
 // Read JSON from stdin
 let input = '';
 // Timeout guard: if stdin doesn't close within 3s (e.g. pipe issues on
@@ -204,7 +152,13 @@ process.stdin.on('end', () => {
     }
 
     const homeDir = getHomeDir();
-    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(homeDir, '.claude');
+    let absDir = path.resolve(dir);
+    try { absDir = fs.realpathSync(absDir); } catch (e) {}
+
+    // Per-session state: transcript cursors, token totals, git baselines
+    const stateFile = sessionState.statePath(sessionState.claudeDir(), session);
+    const state = sessionState.load(stateFile); // empty state when there is no session id
+    const loaded = JSON.stringify(state);
 
     // Session cost — only show for API key users; rate_limits presence means subscription
     const isSubscription = data.rate_limits !== undefined;
@@ -233,27 +187,11 @@ process.stdin.on('end', () => {
     }
 
     // Git branch + session commit counter
-    const absDir = path.resolve(dir);
-    let branch = '';
-    let commitCount = 0;
-    try {
-      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-      const headSha = execSync('git rev-parse HEAD', { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-      if (session) {
-        const sessionFile = path.join(claudeDir, `statusline-session-${session}.json`);
-        let sessionData = {};
-        try { sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf8')); } catch (e) {}
-        if (!sessionData[absDir]) {
-          sessionData[absDir] = headSha;
-          try { fs.writeFileSync(sessionFile, JSON.stringify(sessionData)); } catch (e) {}
-        }
-        const baseline = sessionData[absDir];
-        if (baseline !== headSha) {
-          const countStr = execFileSync('git', ['rev-list', '--count', `${baseline}..HEAD`], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-          commitCount = parseInt(countStr, 10) || 0;
-        }
-      }
-    } catch (e) {}
+    const { branch, commits: commitCount } = sessionState.gitInfo(absDir, state);
+
+    // Session tokens from the transcript (and subagent transcripts), deduplicated
+    if (data.transcript_path) sessionState.updateTokens(state, data.transcript_path);
+    if (stateFile && JSON.stringify(state) !== loaded) sessionState.save(stateFile, state);
 
     // Output
     const safeBranch = sanitize(branch);
@@ -263,7 +201,8 @@ process.stdin.on('end', () => {
     } else if (path.dirname(absDir) === homeDir) {
       dirLabel = `~/${path.basename(absDir)}`;
     } else {
-      dirLabel = `~/${path.basename(path.dirname(absDir))}/${path.basename(absDir)}`;
+      const prefix = absDir.startsWith(homeDir + path.sep) ? '~/' : '';
+      dirLabel = `${prefix}${path.basename(path.dirname(absDir))}/${path.basename(absDir)}`;
     }
     const dirname = sanitize(dirLabel);
     // dirname is bright; branch stays cyan; commit count dim after branch
@@ -276,19 +215,14 @@ process.stdin.on('end', () => {
     const costDisplay = sessionCost !== null
       ? `  \x1b[33m$${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}\x1b[0m`
       : '';
-    // Session token consumption — prefer JSONL-sourced totals (accurate through
-    // the last completed tool use) over the stdin snapshot (only updated at turn start).
-    const stdinIn   = data.context_window?.total_input_tokens  ?? null;
-    const stdinOut  = data.context_window?.total_output_tokens ?? null;
-    const jsonlTok  = readSessionTokens(claudeDir, session, absDir);
-    const totalIn   = jsonlTok && jsonlTok.totalIn  > (stdinIn  ?? 0) ? jsonlTok.totalIn  : stdinIn;
-    const totalOut  = jsonlTok && jsonlTok.totalOut > (stdinOut ?? 0) ? jsonlTok.totalOut : stdinOut;
+    // Session tokens: `12.3k↓ + 1.2M cache 8.1k↑` (cache part dimmed, omitted when zero)
     let tokenDisplay = '';
-    if (totalIn != null || totalOut != null || jsonlTok) {
+    if (Object.keys(state.files).length) {
       const fmt = n => n >= 1_000_000 ? (n % 1_000_000 === 0 ? `${n / 1_000_000}M` : `${(n / 1_000_000).toFixed(1)}M`)
                      : n >= 1000     ? `${(n / 1000).toFixed(1)}k`
                      : String(n);
-      tokenDisplay = `\x1b[97m${fmt(totalIn ?? 0)}↓ ${fmt(totalOut ?? 0)}↑\x1b[0m`;
+      const cache = state.tcache > 0 ? ` \x1b[2m+ ${fmt(state.tcache)} cache\x1b[0m\x1b[97m` : '';
+      tokenDisplay = `\x1b[97m${fmt(state.tin)}↓${cache} ${fmt(state.tout)}↑\x1b[0m`;
     }
 
     const usageContent = [u7d, u5h].filter(Boolean).join('  ');
@@ -296,28 +230,13 @@ process.stdin.on('end', () => {
     if (usageContent) line2Chunks.push(usageContent);
     if (costDisplay) line2Chunks.push(costDisplay.trimStart());
     if (tokenDisplay) line2Chunks.push(tokenDisplay);
-    // Effort level: read from env var first, then settings.json, then fall back to
-    // model-based default (sonnet-4/opus-4 default to "medium" in Claude Code).
-    const effortLetters = { low: 'L', medium: 'M', high: 'H' };
-    let effortSuffix = '';
-    try {
-      let rawEffort = process.env.CLAUDE_CODE_EFFORT_LEVEL
-        || JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'))?.effortLevel
-        || '';
-      if (!rawEffort) {
-        const m = model.toLowerCase();
-        if (m.includes('sonnet-4') || m.includes('opus-4')) rawEffort = 'medium';
-      }
-      const effortColors = { low: '\x1b[32m', medium: '\x1b[33m', high: '\x1b[38;5;208m', max: '\x1b[31m' };
-      const level = rawEffort?.toLowerCase();
-      const color = effortColors[level] || '';
-      if (level === 'max') {
-        effortSuffix = ` \x1b[0m${color}[MAXX]\x1b[0m`;
-      } else {
-        const letter = effortLetters[level];
-        if (letter) effortSuffix = ` \x1b[0m${color}[${letter}]\x1b[0m`;
-      }
-    } catch (e) {}
+    // Effort level: live value from stdin (absent when the model has no effort parameter)
+    const effortTags = {
+      low: ['\x1b[32m', 'L'], medium: ['\x1b[33m', 'M'], high: ['\x1b[38;5;208m', 'H'],
+      xhigh: ['\x1b[38;5;202m', 'XH'], max: ['\x1b[31m', 'MAXX'],
+    };
+    const effort = effortTags[data.effort?.level];
+    const effortSuffix = effort ? ` \x1b[0m${effort[0]}[${effort[1]}]\x1b[0m` : '';
 
     const modelDisplay = `\x1b[0m\x1b[94m${model}\x1b[0m` + effortSuffix;
     const line1Chunks = [modelDisplay];

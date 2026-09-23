@@ -241,117 +241,7 @@ fn dir_label_nested_path() {
 fn dir_label_unrelated_path() {
     let abs = std::path::Path::new("/tmp/foo/bar");
     let home = std::path::Path::new("/home/user");
-    assert_eq!(dir_label(abs, home), "~/foo/bar");
-}
-
-#[test]
-fn read_session_tokens_missing_file_returns_none() {
-    let tmp = std::env::temp_dir().join(format!("sl_tok_test_{}", std::process::id()));
-    std::fs::create_dir_all(&tmp).unwrap();
-    let result = read_session_tokens(&tmp, "nosuchsession", "/no/such/dir");
-    assert!(result.is_none());
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn read_session_tokens_parses_jsonl() {
-    let tmp = std::env::temp_dir().join(format!("sl_tok_test2_{}", std::process::id()));
-    let slug = "-tmp-myproject";
-    let projects_dir = tmp.join("projects").join(slug);
-    std::fs::create_dir_all(&projects_dir).unwrap();
-    let session = "testsession";
-    let jsonl = concat!(
-        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":200,\"cache_creation_input_tokens\":0}}}\n",
-        "{\"type\":\"user\",\"message\":{}}\n",
-        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n",
-    );
-    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
-    let result = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
-    // total_in = (100 + 200/10 + 0) + (10 + 0 + 0) = 130
-    // total_out = 50 + 5 = 55
-    assert_eq!(result.total_in, 130);
-    assert_eq!(result.total_out, 55);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn read_session_tokens_normalizes_backslash_slug() {
-    let tmp = std::env::temp_dir().join(format!("sl_tok_test_backslash_{}", std::process::id()));
-    let slug = "C:-work-repo";
-    let projects_dir = tmp.join("projects").join(slug);
-    std::fs::create_dir_all(&projects_dir).unwrap();
-    let session = "testsession-backslash";
-    let jsonl = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
-    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
-    let result = read_session_tokens(&tmp, session, "C:\\work\\repo").unwrap();
-    assert_eq!(result.total_in, 1);
-    assert_eq!(result.total_out, 2);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn read_session_tokens_uses_offset_cache() {
-    let tmp = std::env::temp_dir().join(format!("sl_tok_test3_{}", std::process::id()));
-    let slug = "-tmp-myproject";
-    let projects_dir = tmp.join("projects").join(slug);
-    std::fs::create_dir_all(&projects_dir).unwrap();
-    let session = "testsession2";
-    let line1 = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
-    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), line1).unwrap();
-    // First read
-    let r1 = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
-    assert_eq!(r1.total_in, 100);
-    // Append a second line
-    let line2 = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":20,\"output_tokens\":10,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
-    use std::io::Write;
-    let mut f = std::fs::OpenOptions::new()
-        .append(true)
-        .open(projects_dir.join(format!("{}.jsonl", session)))
-        .unwrap();
-    f.write_all(line2.as_bytes()).unwrap();
-    // Second read — should pick up only the new line via offset cache
-    let r2 = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
-    assert_eq!(r2.total_in, 120);
-    assert_eq!(r2.total_out, 60);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn read_session_tokens_ignores_malformed_and_incomplete_lines() {
-    let tmp = std::env::temp_dir().join(format!("sl_tok_test_badlines_{}", std::process::id()));
-    let slug = "-tmp-myproject";
-    let projects_dir = tmp.join("projects").join(slug);
-    std::fs::create_dir_all(&projects_dir).unwrap();
-    let session = "testsession-badlines";
-
-    let jsonl = concat!(
-        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n",
-        "{bad json}\n",
-        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"cache_read_input_tokens\":10,\"cache_creation_input_tokens\":0}}}\n",
-        // Incomplete final line (no newline) should be ignored.
-        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":999,\"output_tokens\":999}}}"
-    );
-    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
-
-    // Malformed cache file should be ignored and rebuilt.
-    std::fs::write(tmp.join(format!("statusline-tokcache-{}.json", session)), "{bad cache").unwrap();
-
-    let result = read_session_tokens(&tmp, session, "/tmp/myproject").unwrap();
-    assert_eq!(result.total_in, 7);
-    assert_eq!(result.total_out, 4);
-
-    let cache_text = std::fs::read_to_string(tmp.join(format!("statusline-tokcache-{}.json", session))).unwrap();
-    let cache: serde_json::Value = serde_json::from_str(&cache_text).unwrap();
-    assert!(cache["offset"].as_u64().unwrap_or(0) > 0);
-
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn git_helpers_return_empty_on_invalid_directory() {
-    let bogus = "/path/that/does/not/exist/for-statusline-tests";
-    assert_eq!(git_branch(bogus), "");
-    assert_eq!(git_head_sha(bogus), "");
+    assert_eq!(dir_label(abs, home), "foo/bar");
 }
 
 fn make_basic_input(model: &str) -> String {
@@ -438,23 +328,6 @@ fn render_shows_cost_for_api_key_users() {
     }).to_string();
     let out = render(&input).unwrap();
     assert!(out.contains("$0.0042"));
-}
-
-#[test]
-fn render_shows_token_display_from_stdin() {
-    let input = serde_json::json!({
-        "model": {"display_name": "M"},
-        "session_id": "",
-        "context_window": {
-            "remaining_percentage": 80.0,
-            "total_input_tokens": 3000,
-            "total_output_tokens": 500
-        }
-    }).to_string();
-    let out = render(&input).unwrap();
-    assert!(out.contains("↓"), "expected input token display down arrow");
-    assert!(out.contains("↑"), "expected output token display up arrow");
-    assert!(out.contains("3.0k↓ 500↑"), "expected separated tokens");
 }
 
 #[test]
@@ -561,36 +434,6 @@ fn parse_status_input_handles_null_heavy_payload() {
 }
 
 #[test]
-fn render_prefers_stdin_tokens_when_jsonl_totals_are_lower() {
-    let tmp = std::env::temp_dir().join(format!("sl_render_tok_pref_{}", std::process::id()));
-    let slug = "-tmp-myproject-lower";
-    let projects_dir = tmp.join("projects").join(slug);
-    std::fs::create_dir_all(&projects_dir).unwrap();
-    let session = "sess-stdin-wins";
-
-    let jsonl = "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n";
-    std::fs::write(projects_dir.join(format!("{}.jsonl", session)), jsonl).unwrap();
-
-    std::env::set_var("CLAUDE_CONFIG_DIR", &tmp);
-    let input = serde_json::json!({
-        "model": {"display_name": "M"},
-        "workspace": {"current_dir": "/tmp/myproject-lower"},
-        "session_id": session,
-        "context_window": {
-            "remaining_percentage": 90.0,
-            "total_input_tokens": 100,
-            "total_output_tokens": 50
-        }
-    }).to_string();
-
-    let out = render(&input).unwrap();
-    std::env::remove_var("CLAUDE_CONFIG_DIR");
-    assert!(out.contains("100↓ 50↑"));
-
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
 fn sanitize_handles_unterminated_escape_at_end_of_string() {
     // \x1b[ at end of string — digits are consumed but no terminator found, sequence is dropped.
     assert_eq!(sanitize("hello\x1b["), "hello");
@@ -643,30 +486,66 @@ fn render_shows_usage_label_when_rate_limits_present_but_percentages_null() {
 }
 
 #[test]
-fn effort_suffix_reads_from_settings_json() {
-    let tmp = std::env::temp_dir().join(format!("sl_effort_settings_{}", std::process::id()));
-    std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::write(
-        tmp.join("settings.json"),
-        r#"{"effortLevel":"low"}"#,
-    ).unwrap();
-
-    let sfx = effort_suffix("some-model", &tmp);
-    std::fs::remove_dir_all(&tmp).ok();
-
-    assert!(sfx.contains("[L]"), "effort suffix should reflect effortLevel from settings.json");
+fn dir_label_deep_under_home_keeps_tilde() {
+    let abs = std::path::Path::new("/home/user/a/b/c");
+    let home = std::path::Path::new("/home/user");
+    assert_eq!(dir_label(abs, home), "~/b/c");
 }
 
 #[test]
-fn effort_suffix_env_takes_priority_over_settings_json() {
-    let tmp = std::env::temp_dir().join(format!("sl_effort_env_{}", std::process::id()));
+fn effort_suffix_xhigh() {
+    assert!(effort_suffix_from_level("xhigh").contains("[XH]"));
+}
+
+#[test]
+fn render_reads_effort_from_stdin() {
+    let input = serde_json::json!({
+        "model": {"display_name": "M"},
+        "session_id": "",
+        "effort": {"level": "high"}
+    }).to_string();
+    assert!(render(&input).unwrap().contains("[H]"));
+}
+
+#[test]
+fn render_ignores_context_window_token_counts() {
+    // context_window.total_*_tokens is the current context size, not a session total.
+    let input = serde_json::json!({
+        "model": {"display_name": "M"},
+        "session_id": "",
+        "context_window": {"remaining_percentage": 80.0, "total_input_tokens": 3000, "total_output_tokens": 500}
+    }).to_string();
+    let out = render(&input).unwrap();
+    assert!(!out.contains('↓') && !out.contains('↑'));
+}
+
+#[test]
+fn token_display_splits_input_cache_output() {
+    let out = strip_sgr(&token_display(12_300, 1_200_000, 8_100));
+    assert_eq!(out, "12.3k↓ + 1.2M cache 8.1k↑");
+    assert_eq!(strip_sgr(&token_display(5, 0, 7)), "5↓ 7↑");
+}
+
+#[test]
+fn render_shows_transcript_tokens_and_persists_state() {
+    let tmp = std::env::temp_dir().join(format!("sl_render_tokens_{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::write(tmp.join("settings.json"), r#"{"effortLevel":"low"}"#).unwrap();
+    let transcript = tmp.join("sess-render.jsonl");
+    std::fs::write(&transcript, concat!(
+        "{\"type\":\"assistant\",\"requestId\":\"r1\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":2000,\"cache_creation_input_tokens\":10}}}\n",
+        "{\"type\":\"assistant\",\"requestId\":\"r1\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":2000,\"cache_creation_input_tokens\":10}}}\n",
+    )).unwrap();
 
-    std::env::set_var("CLAUDE_CODE_EFFORT_LEVEL", "max");
-    let sfx = effort_suffix("some-model", &tmp);
-    std::env::remove_var("CLAUDE_CODE_EFFORT_LEVEL");
+    std::env::set_var("CLAUDE_CONFIG_DIR", &tmp);
+    let input = serde_json::json!({
+        "model": {"display_name": "M"},
+        "session_id": "sess-render",
+        "transcript_path": transcript.to_string_lossy(),
+    }).to_string();
+    let out = strip_sgr(&render(&input).unwrap());
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+
+    assert!(out.contains("110↓ + 2.0k cache 50↑"), "got: {out}");
+    assert!(tmp.join("statusline").join("sessions").join("sess-render.json").exists());
     std::fs::remove_dir_all(&tmp).ok();
-
-    assert!(sfx.contains("[MAXX]"), "env CLAUDE_CODE_EFFORT_LEVEL should override settings.json");
 }

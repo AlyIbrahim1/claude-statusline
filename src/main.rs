@@ -1,5 +1,6 @@
 mod history;
 mod history_tui;
+mod session;
 mod status_model;
 
 use std::io::Read;
@@ -219,40 +220,26 @@ fn format_tokens(n: u64) -> String {
     }
 }
 
-/// Pure function for testing: maps a level string to the ANSI effort suffix.
+/// `12.3k↓ + 1.2M cache 8.1k↑`; the cache part is dimmed and omitted when zero.
+fn token_display(tin: u64, tcache: u64, tout: u64) -> String {
+    let cache = if tcache > 0 {
+        format!(" \x1b[2m+ {} cache\x1b[0m\x1b[97m", format_tokens(tcache))
+    } else {
+        String::new()
+    };
+    format!("\x1b[97m{}↓{} {}↑\x1b[0m", format_tokens(tin), cache, format_tokens(tout))
+}
+
+/// Maps stdin `effort.level` to the ANSI effort suffix.
 fn effort_suffix_from_level(level: &str) -> String {
     match level {
         "low"    => format!(" \x1b[0m\x1b[32m[L]\x1b[0m"),
         "medium" => format!(" \x1b[0m\x1b[33m[M]\x1b[0m"),
         "high"   => format!(" \x1b[0m\x1b[38;5;208m[H]\x1b[0m"),
+        "xhigh"  => format!(" \x1b[0m\x1b[38;5;202m[XH]\x1b[0m"),
         "max"    => format!(" \x1b[0m\x1b[31m[MAXX]\x1b[0m"),
         _        => String::new(),
     }
-}
-
-/// Resolves effort level from env → settings.json → model default, then formats.
-fn effort_suffix(model: &str, claude_dir: &std::path::Path) -> String {
-    use std::fs;
-
-    let raw = std::env::var("CLAUDE_CODE_EFFORT_LEVEL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            let text = fs::read_to_string(claude_dir.join("settings.json")).ok()?;
-            let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-            let s = v["effortLevel"].as_str()?.to_string();
-            if s.is_empty() { None } else { Some(s) }
-        })
-        .unwrap_or_else(|| {
-            let m = model.to_lowercase();
-            if m.contains("sonnet-4") || m.contains("opus-4") {
-                "medium".to_string()
-            } else {
-                String::new()
-            }
-        });
-
-    effort_suffix_from_level(&raw.to_lowercase())
 }
 
 /// Returns the user's home directory. Checks $HOME then $USERPROFILE (Windows).
@@ -263,8 +250,7 @@ fn dirs_home() -> std::path::PathBuf {
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
 }
 
-/// Builds the directory label with tilde abbreviation: `~`, `~/base`, or `~/parent/base`.
-/// Matches JS: absDir === homeDir → "~", parent === homeDir → "~/base", else "~/parent/base".
+/// Directory label: `~`, `~/base`, `~/parent/base` under home; `parent/base` elsewhere.
 fn dir_label(abs_dir: &std::path::Path, home_dir: &std::path::Path) -> String {
     if abs_dir == home_dir {
         "~".to_string()
@@ -283,188 +269,9 @@ fn dir_label(abs_dir: &std::path::Path, home_dir: &std::path::Path) -> String {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| abs_dir.to_string_lossy().to_string());
-        format!("~/{}/{}", parent_name, base_name)
+        let prefix = if abs_dir.starts_with(home_dir) { "~/" } else { "" };
+        format!("{}{}/{}", prefix, parent_name, base_name)
     }
-}
-
-/// Returns the current git branch name, or "" on any failure.
-fn git_branch(dir: &str) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()
-        .and_then(|o| if o.status.success() { Some(o.stdout) } else { None })
-        .and_then(|b| String::from_utf8(b).ok())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default()
-}
-
-/// Returns the current HEAD SHA, or "" on any failure.
-fn git_head_sha(dir: &str) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()
-        .and_then(|o| if o.status.success() { Some(o.stdout) } else { None })
-        .and_then(|b| String::from_utf8(b).ok())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default()
-}
-
-/// Returns the number of commits made since the session baseline SHA.
-/// Stores the baseline SHA in a per-session JSON file on first call.
-/// All errors silently return 0.
-fn session_commit_count(
-    dir: &str,
-    session: &str,
-    claude_dir: &std::path::Path,
-    abs_dir: &str,
-) -> usize {
-    use std::fs;
-
-    if session.is_empty() {
-        return 0;
-    }
-
-    let head_sha = git_head_sha(dir);
-    if head_sha.is_empty() {
-        return 0;
-    }
-
-    let session_file = claude_dir.join(format!("statusline-session-{}.json", session));
-    let mut session_data: serde_json::Value = fs::read_to_string(&session_file)
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or(serde_json::json!({}));
-
-    if session_data[abs_dir].is_null() {
-        session_data[abs_dir] = serde_json::Value::String(head_sha.clone());
-        let _ = fs::write(
-            &session_file,
-            serde_json::to_string(&session_data).unwrap_or_default(),
-        );
-        return 0;
-    }
-
-    let baseline = session_data[abs_dir].as_str().unwrap_or("").to_string();
-    if baseline == head_sha {
-        return 0;
-    }
-
-    std::process::Command::new("git")
-        .args(["rev-list", "--count", &format!("{}..HEAD", baseline)])
-        .current_dir(dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()
-        .and_then(|o| if o.status.success() { Some(o.stdout) } else { None })
-        .and_then(|b| String::from_utf8(b).ok())
-        .and_then(|s| s.trim().parse::<usize>().ok())
-        .unwrap_or(0)
-}
-
-/// Cumulative token totals read from the session JSONL file.
-struct TokenTotals {
-    total_in: u64,
-    total_out: u64,
-}
-
-/// Reads cumulative token totals from the session JSONL file using a byte-offset cache
-/// so only new bytes are parsed on each invocation (O(new bytes) not O(file)).
-/// Returns None on any error (missing file, bad JSON, etc.).
-fn read_session_tokens(
-    claude_dir: &std::path::Path,
-    session: &str,
-    abs_dir: &str,
-) -> Option<TokenTotals> {
-    use std::io::{Seek, SeekFrom};
-
-    if session.is_empty() {
-        return None;
-    }
-
-    let slug = abs_dir.replace(['/', '\\'], "-");
-    let jsonl_path = claude_dir
-        .join("projects")
-        .join(&slug)
-        .join(format!("{}.jsonl", session));
-    let cache_path = claude_dir.join(format!("statusline-tokcache-{}.json", session));
-
-    let file_size = std::fs::metadata(&jsonl_path).ok()?.len();
-
-    let mut total_in: u64 = 0;
-    let mut total_out: u64 = 0;
-    let mut cached_offset: u64 = 0;
-
-    if let Ok(cache_text) = std::fs::read_to_string(&cache_path) {
-        if let Ok(cached) = serde_json::from_str::<serde_json::Value>(&cache_text) {
-            total_in = cached["totalIn"].as_u64().unwrap_or(0);
-            total_out = cached["totalOut"].as_u64().unwrap_or(0);
-            cached_offset = cached["offset"].as_u64().unwrap_or(0).min(file_size);
-        }
-    }
-
-    if file_size > cached_offset {
-        let mut file = std::fs::File::open(&jsonl_path).ok()?;
-        file.seek(SeekFrom::Start(cached_offset)).ok()?;
-        let mut content = String::new();
-        file.read_to_string(&mut content).ok()?;
-
-        let lines: Vec<&str> = content.split('\n').collect();
-        // Skip the last element: either empty string (file ends with \n)
-        // or a potentially incomplete line (file was mid-write).
-        let safe_lines = &lines[..lines.len().saturating_sub(1)];
-
-        for line in safe_lines {
-            if line.trim().is_empty() {
-                continue;
-            }
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-                if entry["type"] == "assistant" {
-                    if let Some(usage) = entry["message"]["usage"].as_object() {
-                        total_in += usage
-                            .get("input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0)
-                            // Keep parity with JS: Math.round(cache_read_input_tokens * 0.1)
-                            + (usage
-                                .get("cache_read_input_tokens")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0).saturating_add(5) / 10)
-                            + usage
-                                .get("cache_creation_input_tokens")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
-                        total_out += usage
-                            .get("output_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                    }
-                }
-            }
-        }
-
-        // Advance offset by bytes of all complete lines (each terminated by \n)
-        let processed_bytes: u64 = safe_lines.iter().map(|l| l.len() as u64 + 1).sum();
-        let cache_content = serde_json::json!({
-            "totalIn": total_in,
-            "totalOut": total_out,
-            "offset": cached_offset + processed_bytes,
-        });
-        let _ = std::fs::write(
-            &cache_path,
-            serde_json::to_string(&cache_content).unwrap_or_default(),
-        );
-    }
-
-    Some(TokenTotals { total_in, total_out })
 }
 
 fn main() {
@@ -519,18 +326,13 @@ fn render(input: &str) -> Option<String> {
         .map(context_bar)
         .unwrap_or_default();
 
-    // Claude dir and home dir
     let home_dir = dirs_home();
-    let claude_dir: PathBuf = std::env::var("CLAUDE_CONFIG_DIR")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir.join(".claude"));
+    let abs_dir = std::fs::canonicalize(&dir).unwrap_or_else(|_| PathBuf::from(&dir));
 
-    // Absolute path for slug/session keys — use as-is if canonicalize fails
-    let abs_dir = std::fs::canonicalize(&dir)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| dir.clone());
+    // Per-session state: transcript cursors, token totals, git baselines
+    let state_file = session::state_path(&session::claude_dir(), &session);
+    let loaded = state_file.as_deref().map(session::load).unwrap_or_default();
+    let mut state = loaded.clone();
 
     // Cost / rate limits
     // is_subscription = rate_limits key exists (even if null/empty object)
@@ -550,39 +352,30 @@ fn render(input: &str) -> Option<String> {
     let u7d = pct_week.map(|p| usage_line("Weekly", p, "")).unwrap_or_default();
 
     // Git branch + session commit counter
-    let branch = sanitize(&git_branch(&dir));
-    let commit_count = if !branch.is_empty() && !session.is_empty() {
-        session_commit_count(&dir, &session, &claude_dir, &abs_dir)
-    } else {
-        0
-    };
+    let (branch, commit_count) = session::git_info(&abs_dir, &mut state);
+    let branch = sanitize(&branch);
 
-    // JSONL token totals — prefer over stdin snapshot when larger
-    let stdin_in = data["context_window"]["total_input_tokens"].as_u64();
-    let stdin_out = data["context_window"]["total_output_tokens"].as_u64();
-    let jsonl_tok = read_session_tokens(&claude_dir, &session, &abs_dir);
-    let total_in = match &jsonl_tok {
-        Some(t) if t.total_in > stdin_in.unwrap_or(0) => Some(t.total_in),
-        _ => stdin_in,
-    };
-    let total_out = match &jsonl_tok {
-        Some(t) if t.total_out > stdin_out.unwrap_or(0) => Some(t.total_out),
-        _ => stdin_out,
-    };
-    let token_display = if total_in.is_some() || total_out.is_some() || jsonl_tok.is_some() {
-        let t_in = total_in.unwrap_or(0);
-        let t_out = total_out.unwrap_or(0);
-        format!("\x1b[97m{}↓ {}↑\x1b[0m", format_tokens(t_in), format_tokens(t_out))
-    } else {
+    // Session tokens from the transcript (and subagent transcripts), deduplicated
+    let transcript = data["transcript_path"].as_str().unwrap_or("");
+    if !transcript.is_empty() {
+        session::update_tokens(&mut state, std::path::Path::new(transcript));
+    }
+    let token_display = if state.files.is_empty() {
         String::new()
+    } else {
+        token_display(state.tin, state.tcache, state.tout)
     };
 
-    // Effort
-    let effort_sfx = effort_suffix(&model, &claude_dir);
+    if let Some(path) = &state_file {
+        if state != loaded {
+            session::save(path, &state);
+        }
+    }
+
+    let effort_sfx = effort_suffix_from_level(data["effort"]["level"].as_str().unwrap_or(""));
 
     // Dir display: ~/parent/base format with (branch) +N style
-    let abs_dir_path = std::path::Path::new(&abs_dir);
-    let dirname = sanitize(&dir_label(abs_dir_path, &home_dir));
+    let dirname = sanitize(&dir_label(&abs_dir, &home_dir));
     let dir_display = if !branch.is_empty() {
         let commit_suffix = if commit_count > 0 {
             format!(" \x1b[32m+{}", commit_count)

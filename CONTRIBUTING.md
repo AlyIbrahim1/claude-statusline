@@ -46,7 +46,7 @@ All tests must pass before a PR can be merged.
 
 ### JavaScript changes
 
-Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly. `scripts/slug-utils.js` exports `normalizeProjectSlug()` for cross-platform project path normalization — use this if your change touches history or token cache code. All settings-reading functions validate that the parsed JSON is a plain object before proceeding — never write to settings.json if the file contains non-object valid JSON.
+Edit files under `scripts/` or `statusline.js`. The JS side uses `atomicWrite` (write to `.tmp`, then rename) for all settings file operations — do not write `settings.json` directly. `scripts/session.js` mirrors `src/session.rs` (session state, token counting, git reading) — change both together and keep their output identical. All settings-reading functions validate that the parsed JSON is a plain object before proceeding — never write to settings.json if the file contains non-object valid JSON.
 
 If your change touches history slash commands:
 

@@ -17,7 +17,7 @@
 
 ## 4. Key Features & Requirements
 ### 4.1. Core Capabilities
-- **Real-Time Token Tracking:** Intercepts Claude Code's JSONL telemetry for continuous update without waiting for the next turn. Cache-read tokens are weighted at 10% of normal input tokens to reflect their reduced cost in Claude's pricing model.
+- **Real-Time Token Tracking:** Intercepts Claude Code's JSONL telemetry for continuous update without waiting for the next turn. Input (including cache writes), cache reads and output are counted separately; repeated transcript entries for the same message are counted once, and subagent transcripts are included.
 - **Session Cost Calculation:** Live display of session costs for API key users.
 - **Subscription Awareness:** Intelligent toggling between usage/reset timers (Pro/Max plans) and direct API costs based on user subscription type.
 - **Context Bar Normalization:** Calculates "usable %" by factoring out the 16.5% auto-compact buffer.
@@ -27,16 +27,16 @@
 
 ### 4.2. Developer Ergonomics
 - **Extrinsic State Tracking:** 
-  - Git Branch Context including dirty-tree indicators and commits made within the session (`+N`).
-  - Effort level display with a fallback hierarchy: `CLAUDE_CODE_EFFORT_LEVEL` env var → `settings.json` → model-based default (medium for Sonnet/Opus 4, empty otherwise).
-  - Active path/directory label (`~/parent/dir`).
+  - Git Branch Context and commits made within the session (`+N`), read from `.git` without spawning git on every render.
+  - Effort level display from Claude Code's live `effort.level`.
+  - Active path/directory label (`~/parent/dir`, or `parent/dir` outside home).
 
 ### 4.3. Performance & Architecture
 - **Execution Target:** ~5ms for the Rust binary; ~100ms for the Node.js fallback. Both are acceptable; the Rust path is preferred.
 - **Separation of Concerns:** A dedicated History module (`src/history.rs`) manages hook execution, avoiding any database/file writes during the real-time prompt loop.
 - **Graceful Fallback:** At runtime, the CLI resolves the platform Rust binary first; if not found, it falls back to the Node.js renderer. The fallback is distributed in the root npm package without compilation steps, covering unsupported OS/Arch combinations.
 - **Fail-safe Design:** 3-second stdin timeout guard; silently discards bad JSON to strictly guarantee Claude Code never crashes due to the statusline. Settings-reading functions (`setup`, `uninstall`, `toggleHistory`, `getDashboardMode`, `setDashboardMode`) validate that parsed settings.json is a plain object before proceeding, preventing crashes on malformed-but-valid JSON (e.g. `null`, arrays, strings).
-- **Performance Optimizations:** A byte-offset cache (`~/.claude/statusline-tokcache-{session}.json`) avoids re-parsing the full token JSONL on each invocation, keeping latency flat as session length grows.
+- **Performance Optimizations:** A per-session state file (`~/.claude/statusline/sessions/{session}.json`) stores transcript byte offsets so only new bytes are parsed on each invocation, keeping latency flat as session length grows.
 - **Dependency Profile:** Zero runtime shell dependencies (no `jq`, `bc`).
 
 ### 4.4. Lifecycle & Platform
