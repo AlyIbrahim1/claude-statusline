@@ -286,7 +286,7 @@ fn main() {
             return;
         } else if args[1] == "hook" && args.len() >= 3 {
             if args[2] == "start" {
-                history::handle_hook_start();
+                // No-op: kept so SessionStart hooks written by older versions still exit 0.
                 return;
             } else if args[2] == "end" {
                 history::handle_hook_end();
@@ -333,6 +333,9 @@ fn render(input: &str) -> Option<String> {
     let state_file = session::state_path(&session::claude_dir(), &session);
     let loaded = state_file.as_deref().map(session::load).unwrap_or_default();
     let mut state = loaded.clone();
+    if state_file.is_some() {
+        state.note_input(&data, &model, &dir);
+    }
 
     // Cost / rate limits
     // is_subscription = rate_limits key exists (even if null/empty object)

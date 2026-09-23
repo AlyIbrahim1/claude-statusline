@@ -61,12 +61,12 @@ describe('cli.js', () => {
     expect(r.stderr.toString()).toContain('invalid JSON');
   });
 
-  test('enable-history: exits 0 and adds SessionStart/SessionEnd hooks', () => {
+  test('enable-history: exits 0 and adds only the SessionEnd hook', () => {
     const r = run(['enable-history']);
     expect(r.status).toBe(0);
     expect(r.stdout.toString()).toContain('✓');
     const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
-    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionStart).toBeUndefined();
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
   });
 

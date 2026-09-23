@@ -1,6 +1,7 @@
 'use strict';
 // Per-session state kept in <claude_dir>/statusline/sessions/<session_id>.json:
-// transcript read cursors, deduplicated token totals, and git commit baselines.
+// transcript read cursors, deduplicated token totals, git commit baselines, and the
+// last values seen for the history record written at SessionEnd.
 // Same file format as src/session.rs.
 const fs = require('fs');
 const path = require('path');
@@ -13,7 +14,19 @@ function statePath(claudeDir, session) {
 }
 
 function emptyState() {
-  return { files: {}, tin: 0, tcache: 0, tout: 0, git: {} };
+  return { files: {}, tin: 0, tcache: 0, tout: 0, git: {}, start: 0, model: '', project: '', cost: 0, dur: 0 };
+}
+
+const nowSecs = () => Math.floor(Date.now() / 1000);
+
+// Records the values the history needs from one statusline input.
+function noteInput(state, data, model, dir) {
+  if (!state.start) state.start = nowSecs();
+  state.model = model;
+  const projectDir = data.workspace?.project_dir || dir;
+  state.project = path.basename(projectDir).replace(/\x1b\[[0-9;]*[mGKHFABCDJ]/g, '');
+  if (typeof data.cost?.total_cost_usd === 'number') state.cost = data.cost.total_cost_usd;
+  if (Number.isInteger(data.cost?.total_duration_ms)) state.dur = Math.floor(data.cost.total_duration_ms / 1000);
 }
 
 function load(file) {
@@ -159,4 +172,4 @@ function gitInfo(dir, state) {
   return { branch: head.branch, commits: cur.n };
 }
 
-module.exports = { claudeDir: getClaudeConfigDir, statePath, load, save, updateTokens, gitInfo };
+module.exports = { claudeDir: getClaudeConfigDir, statePath, load, save, updateTokens, gitInfo, noteInput, nowSecs };

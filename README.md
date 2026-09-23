@@ -79,12 +79,12 @@ Session history is **enabled by default** on setup. Each session records:
 
 | Field | Details |
 |---|---|
-| Project | Directory name and path |
+| Project | Name of the directory Claude Code was launched in |
 | Model | Which Claude model was used |
-| Tokens | Input and output counts |
-| Cost | USD cost (API key users) |
-| Duration | Session length in seconds |
-| Exit reason | How the session ended |
+| Tokens | Input, cache-read and output counts (including subagents) |
+| Cost | Session cost reported by Claude Code |
+| Duration | Session length |
+| Exit reason | How the session ended (`clear`, `resume`, `logout`, `prompt_input_exit`, `other`) |
 
 </div>
 
@@ -98,7 +98,14 @@ claude-statusline enable-history            # Enable session tracking
 claude-statusline disable-history           # Disable session tracking
 ```
 
-Data is stored at `~/.claude/statusline-history.jsonl`.
+Everything lives in one folder, `~/.claude/statusline/` (or `$CLAUDE_CONFIG_DIR/statusline/`):
+
+| Path | Contents |
+|---|---|
+| `history.js` | One compact line (~100 bytes) per finished session, append-only |
+| `sessions/<id>.json` | Working state of a running session; deleted when the session ends |
+
+A session is written to history when it ends. State left behind by a session that never ended cleanly (crash, killed terminal) is written and removed after 24 hours. Sessions that used no tokens are not recorded. Files from older versions (`statusline-history.jsonl`, `statusline-tokcache-*`, `statusline-session-*`) are converted and removed automatically.
 
 ### Claude Code slash commands
 
@@ -215,7 +222,7 @@ claude-statusline uninstall
 npm uninstall -g @alyibrahim/claude-statusline
 ```
 
-> Always run `claude-statusline uninstall` first — it removes the `statusLine` entry from `~/.claude/settings.json` before the files are deleted.
+> Always run `claude-statusline uninstall` first — it removes the `statusLine` entry and hooks from `~/.claude/settings.json` and deletes `~/.claude/statusline/` (history included) before the package files are removed.
 
 `npm uninstall -g @alyibrahim/claude-statusline` also removes the four history slash command files installed by this package from `~/.claude/commands/`, without touching other custom commands.
 

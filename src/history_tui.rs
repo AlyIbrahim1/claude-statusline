@@ -1,8 +1,5 @@
 use std::collections::BTreeSet;
-use std::env;
-use std::fs;
 use std::io;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -14,27 +11,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::{
     Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap,
 };
-use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-struct Session {
-    #[serde(default)]
-    project_name: String,
-    #[serde(default)]
-    model: String,
-    #[serde(default)]
-    start_time: String,
-    #[serde(default)]
-    duration_seconds: i64,
-    #[serde(default)]
-    tokens_in: u64,
-    #[serde(default)]
-    tokens_out: u64,
-    #[serde(default)]
-    cost_usd: f64,
-    #[serde(default)]
-    exit_reason: String,
-}
+use crate::history::Record as Session;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct Summary {
@@ -192,32 +170,6 @@ impl App {
     }
 }
 
-fn history_path() -> PathBuf {
-    let home = env::var("HOME")
-        .or_else(|_| env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home)
-        .join(".claude")
-        .join("statusline-history.jsonl")
-}
-
-fn parse_sessions_from_str(content: &str) -> Vec<Session> {
-    let mut sessions: Vec<Session> = content
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .filter_map(|line| serde_json::from_str::<Session>(line).ok())
-        .collect();
-    sessions.sort_by(|a, b| b.start_time.cmp(&a.start_time));
-    sessions
-}
-
-fn read_sessions(path: &PathBuf) -> Vec<Session> {
-    match fs::read_to_string(path) {
-        Ok(content) => parse_sessions_from_str(&content),
-        Err(_) => Vec::new(),
-    }
-}
-
 fn compact_tokens(tokens: u64) -> String {
     if tokens >= 1_000_000 {
         let m = tokens as f64 / 1_000_000.0;
@@ -264,9 +216,9 @@ fn format_cost(cost: f64) -> String {
 
 fn exit_reason_style(exit_reason: &str) -> Style {
     match exit_reason {
-        "normal" => Style::default().fg(Color::Green),
-        "interrupt" => Style::default().fg(Color::Yellow),
-        "pending" => Style::default().fg(Color::Rgb(255, 165, 0)),
+        "prompt_input_exit" | "logout" => Style::default().fg(Color::Green),
+        "clear" | "resume" => Style::default().fg(Color::Cyan),
+        "other" => Style::default().fg(Color::Yellow),
         _ => Style::default(),
     }
 }
@@ -317,6 +269,7 @@ fn ui(frame: &mut Frame<'_>, app: &mut App) {
                 Cell::from(format_started(session.start_time.as_str())),
                 Cell::from(format_duration(session.duration_seconds)),
                 Cell::from(compact_tokens(tokens)),
+                Cell::from(compact_tokens(session.tokens_cache)),
                 Cell::from(format_cost(session.cost_usd)),
             ])
             .style(row_style)
@@ -326,16 +279,17 @@ fn ui(frame: &mut Frame<'_>, app: &mut App) {
     let table = Table::new(
         rows,
         [
-            Constraint::Percentage(26),
             Constraint::Percentage(22),
+            Constraint::Percentage(20),
             Constraint::Percentage(18),
+            Constraint::Percentage(9),
             Constraint::Percentage(10),
-            Constraint::Percentage(12),
-            Constraint::Percentage(12),
+            Constraint::Percentage(10),
+            Constraint::Percentage(11),
         ],
     )
     .header(
-        Row::new(vec!["Project", "Model", "Started", "Dur", "Tok", "Cost"])
+        Row::new(vec!["Project", "Model", "Started", "Dur", "Tok", "Cache", "Cost"])
             .style(Style::default().add_modifier(Modifier::BOLD)),
     )
     .block(Block::default().borders(Borders::ALL))
@@ -387,7 +341,7 @@ fn ui(frame: &mut Frame<'_>, app: &mut App) {
 
 /// Terminal-native interactive history dashboard.
 pub fn run() {
-    let sessions = read_sessions(&history_path());
+    let sessions = crate::history::read_history(&crate::history::history_path(&crate::session::claude_dir()));
     let mut app = App::new(sessions);
 
     if enable_raw_mode().is_err() {

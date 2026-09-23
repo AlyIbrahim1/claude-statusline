@@ -21,7 +21,7 @@
 - **Session Cost Calculation:** Live display of session costs for API key users.
 - **Subscription Awareness:** Intelligent toggling between usage/reset timers (Pro/Max plans) and direct API costs based on user subscription type.
 - **Context Bar Normalization:** Calculates "usable %" by factoring out the 16.5% auto-compact buffer.
-- **Session History:** Tracks session start and end events using Claude Code hooks, storing metrics in an append-only JSONL file at `~/.claude/statusline-history.jsonl`. History tracking is **enabled by default** on setup and can be toggled via `enable-history` / `disable-history` CLI commands.
+- **Session History:** A SessionEnd hook appends one compact line per session to `~/.claude/statusline/history.js`, using state the statusline keeps in `~/.claude/statusline/sessions/<id>.json` (deleted when the session ends; stale state is finalized after 24h). History tracking is **enabled by default** on setup and can be toggled via `enable-history` / `disable-history` CLI commands.
 - **History Dashboard (Web + Terminal):** Running `claude-statusline history` opens history in the user's saved mode. Web mode generates a self-contained HTML dashboard in the browser with project filtering, summary stats (total sessions, tokens in/out, total spend), light/dark theme toggle, and per-row detail for model, duration, cost, and exit reason. Terminal mode opens an interactive full-screen TUI.
 - **Claude Slash Commands:** History management is also available as Claude Code slash commands (`/history`, `/history-enable`, `/history-disable`, `/history-mode <web|terminal>`). Command files are provided in `.claude/commands/` for project contributors and installed to `~/.claude/commands/` on global npm install.
 
@@ -43,8 +43,8 @@
 - **Installation:** Natively distributed as OS-specific npm packages (`@alyibrahim/claude-statusline-*`).
 - **CLI Commands:**
   - `claude-statusline setup` — atomic update of `~/.claude/settings.json`; enables history hooks by default.
-  - `claude-statusline uninstall` — strips the `statusLine` key without affecting other settings.
-  - `claude-statusline enable-history` / `disable-history` — toggles `SessionStart` and `SessionEnd` hooks in settings.
+  - `claude-statusline uninstall` — strips the `statusLine` key and hooks without affecting other settings, and deletes `~/.claude/statusline/`.
+  - `claude-statusline enable-history` / `disable-history` — toggles the `SessionEnd` hook in settings.
   - `claude-statusline history` — opens history in saved mode (`web` by default).
   - `claude-statusline history --mode web|terminal` — switches mode and persists it.
   - `claude-statusline download-binary` — downloads the pre-compiled native binary for plugin users who skip the npm install step.

@@ -25,7 +25,7 @@ describe('session state', () => {
     save(file, { files: {}, tin: 1, tcache: 2, tout: 3, git: {} });
     expect(load(file).tout).toBe(3);
     fs.writeFileSync(file, '[1,2]');
-    expect(load(file)).toEqual({ files: {}, tin: 0, tcache: 0, tout: 0, git: {} });
+    expect(load(file)).toMatchObject({ files: {}, tin: 0, tcache: 0, tout: 0, git: {}, start: 0 });
   });
 
   test('gitInfo reads branch, counts session commits, handles packed refs and detached HEAD', () => {

@@ -12,7 +12,7 @@ claude-statusline <command>
 
 Commands:
   setup            Configure ~/.claude/settings.json to use this statusline
-  uninstall        Remove this statusline from ~/.claude/settings.json
+  uninstall        Remove this statusline from ~/.claude/settings.json and delete its data
   download-binary  Download the native binary for this platform
   enable-history   Enable tracking session analytics to JSONL (default on setup)
   disable-history  Remove history tracking hooks from Claude settings
@@ -111,7 +111,7 @@ if (cmd === 'setup') {
   console.log(`✓ Configured at ${result.settingsPath}. Restart Claude Code to see it.`);
 
 } else if (cmd === 'uninstall') {
-  const result = uninstall();
+  const result = uninstall({ removeData: true });
   if (!result.ok) {
     console.error('Error:', result.error);
     process.exit(1);

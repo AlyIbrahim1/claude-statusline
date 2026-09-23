@@ -1,34 +1,41 @@
-use std::path::PathBuf;
-use std::env;
+//! Session history: one line per finished session in `<claude_dir>/statusline/history.js`.
+//!
+//! Each line is `h([id,project,model,start,dur,in,cache,out,cost,reason]);` — valid JSON inside
+//! a JS call, so the dashboard page can load the file directly with `<script src>`.
+//! The file is only ever appended to. Readers keep the last line per id, so a resumed
+//! session (or one finalized early by the stale sweep) is never counted twice.
+
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
 
-fn home_dir_string() -> String {
-    env::var("HOME")
-        .or_else(|_| env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string())
+use crate::session::{self, State};
+
+/// Session state files untouched this long belong to sessions that ended without SessionEnd.
+const STALE_SECS: u64 = 24 * 60 * 60;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+pub struct Record {
+    pub id: String,
+    pub project_name: String,
+    pub model: String,
+    /// Unix seconds
+    pub start: u64,
+    /// UTC "YYYY-MM-DD HH:MM:SS"
+    pub start_time: String,
+    pub duration_seconds: i64,
+    pub tokens_in: u64,
+    pub tokens_cache: u64,
+    pub tokens_out: u64,
+    pub cost_usd: f64,
+    pub exit_reason: String,
 }
 
-fn get_jsonl_path() -> PathBuf {
-    let home = home_dir_string();
-    PathBuf::from(home).join(".claude").join("statusline-history.jsonl")
-}
-
-/// Returns current UTC time as "YYYY-MM-DD HH:MM:SS".
-fn now_str() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    unix_secs_to_str(secs)
-}
-
-fn now_unix_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+pub fn history_path(claude_dir: &Path) -> PathBuf {
+    claude_dir.join("statusline").join("history.js")
 }
 
 /// Converts Unix seconds to "YYYY-MM-DD HH:MM:SS" using the Howard Hinnant algorithm.
@@ -71,172 +78,195 @@ fn parse_datetime_to_unix_secs(s: &str) -> Option<u64> {
     Some(days * 86400 + h * 3600 + mi * 60 + sec)
 }
 
-fn read_sessions(path: &PathBuf) -> Vec<Value> {
-    if !path.exists() { return vec![]; }
-    fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect()
+fn format_line(id: &str, project: &str, model: &str, start: u64, dur: u64,
+               tin: u64, tcache: u64, tout: u64, cost: f64, reason: &str) -> String {
+    let id: String = id.chars().take(8).collect();
+    let cost = (cost * 10_000.0).round() / 10_000.0;
+    let row = json!([id, project, model, start, dur, tin, tcache, tout, cost, reason]);
+    format!("h({row});\n")
 }
 
-fn write_sessions(path: &PathBuf, sessions: &[Value]) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let tmp = path.with_extension("tmp");
-    let content: String = sessions.iter()
-        .filter_map(|s| serde_json::to_string(s).ok())
-        .collect::<Vec<_>>()
-        .join("\n") + "\n";
-    if fs::write(&tmp, &content).is_ok() {
-        let _ = fs::rename(&tmp, path);
-    }
+fn parse_line(line: &str) -> Option<Record> {
+    let inner = line.trim().strip_prefix("h(")?.strip_suffix(");")?;
+    let Value::Array(v) = serde_json::from_str::<Value>(inner).ok()? else { return None };
+    let s = |i: usize| v.get(i).and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let n = |i: usize| v.get(i).and_then(|x| x.as_u64()).unwrap_or(0);
+    let start = n(3);
+    Some(Record {
+        id: s(0),
+        project_name: s(1),
+        model: s(2),
+        start,
+        start_time: unix_secs_to_str(start),
+        duration_seconds: n(4) as i64,
+        tokens_in: n(5),
+        tokens_cache: n(6),
+        tokens_out: n(7),
+        cost_usd: v.get(8).and_then(|x| x.as_f64()).unwrap_or(0.0),
+        exit_reason: s(9),
+    })
 }
 
-fn append_session(path: &PathBuf, session: &Value) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        if let Ok(line) = serde_json::to_string(session) {
-            let _ = writeln!(file, "{}", line);
+/// All sessions, newest first, keeping only the last line per id.
+pub fn read_history(path: &Path) -> Vec<Record> {
+    let text = fs::read_to_string(path).unwrap_or_default();
+    let mut latest: HashMap<String, Record> = HashMap::new();
+    let mut anonymous = Vec::new();
+    for rec in text.lines().filter_map(parse_line) {
+        if rec.id.is_empty() {
+            anonymous.push(rec);
+        } else {
+            latest.insert(rec.id.clone(), rec);
         }
     }
+    let mut all: Vec<Record> = latest.into_values().chain(anonymous).collect();
+    all.sort_by(|a, b| b.start.cmp(&a.start));
+    all
 }
 
-pub fn handle_hook_start() {
-    let project_dir = env::var("CLAUDE_PROJECT_DIR").unwrap_or_else(|_| {
-        env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
-    });
-    let project_name = std::path::Path::new(&project_dir)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    let ts_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let temp_id = format!("pending-{}-{}", project_name, ts_ms);
-    let now = now_str();
-
-    let session = json!({
-        "session_id":       temp_id,
-        "project_dir":      project_dir,
-        "project_name":     project_name,
-        "model":            "pending",
-        "start_time":       now,
-        "end_time":         now,
-        "tokens_in":        0,
-        "tokens_out":       0,
-        "cost_usd":         0.0,
-        "duration_seconds": 0,
-        "exit_reason":      "pending"
-    });
-
-    append_session(&get_jsonl_path(), &session);
+fn append(path: &Path, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    // ponytail: one small O_APPEND write per call is atomic on local filesystems, so no lock.
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = f.write_all(text.as_bytes());
+    }
 }
 
+/// History line for a session state, or "" when the session used no tokens.
+fn record_line(id: &str, state: &State, reason: &str, now: u64) -> String {
+    if state.tin + state.tcache + state.tout == 0 {
+        return String::new();
+    }
+    let start = if state.start == 0 { now } else { state.start };
+    let dur = if state.dur > 0 { state.dur } else { now.saturating_sub(start) };
+    let model = if state.model.is_empty() { "Claude" } else { &state.model };
+    format_line(id, &state.project, model, start, dur, state.tin, state.tcache, state.tout, state.cost, reason)
+}
+
+fn remove_state(path: &Path) {
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_file(path.with_extension("tmp"));
+}
+
+/// Writes the history line for a finished session and deletes its state file.
+pub fn finalize(claude_dir: &Path, session_id: &str, transcript: &str, reason: &str, now: u64) {
+    let Some(state_file) = session::state_path(claude_dir, session_id) else { return };
+    let mut state = session::load(&state_file);
+    if !transcript.is_empty() {
+        // Catch up on the last turn, which may not have been rendered.
+        session::update_tokens(&mut state, Path::new(transcript));
+    }
+    append(&history_path(claude_dir), &record_line(session_id, &state, reason, now));
+    remove_state(&state_file);
+}
+
+/// Finalizes state files of sessions that ended without a SessionEnd hook (crash, kill).
+pub fn sweep_stale(claude_dir: &Path, now: u64) {
+    let dir = claude_dir.join("statusline").join("sessions");
+    let Ok(entries) = fs::read_dir(&dir) else { return };
+    let mut lines = String::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let age = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+            .map_or(0, |d| d.as_secs());
+        if age < STALE_SECS {
+            continue;
+        }
+        if path.extension().map_or(false, |e| e == "json") {
+            let id = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            lines.push_str(&record_line(&id, &session::load(&path), "other", now));
+        }
+        remove_state(&path);
+    }
+    append(&history_path(claude_dir), &lines);
+}
+
+/// One-time move from the pre-1.7 layout: converts `statusline-history.jsonl` (always under
+/// `~/.claude`) and deletes the loose per-session and realtime files.
+pub fn migrate_legacy(claude_dir: &Path, home_claude_dir: &Path) {
+    let legacy = home_claude_dir.join("statusline-history.jsonl");
+    if let Ok(text) = fs::read_to_string(&legacy) {
+        let mut lines = String::new();
+        for v in text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()) {
+            let reason = v["exit_reason"].as_str().unwrap_or("");
+            if reason.is_empty() || reason == "pending" {
+                continue;
+            }
+            let start = parse_datetime_to_unix_secs(v["start_time"].as_str().unwrap_or("")).unwrap_or(0);
+            // No id: the old hook guessed session ids and often gave several sessions the same
+            // one, so deduplicating would merge distinct rows.
+            lines.push_str(&format_line(
+                "",
+                v["project_name"].as_str().unwrap_or(""),
+                v["model"].as_str().unwrap_or("Claude"),
+                start,
+                v["duration_seconds"].as_u64().unwrap_or(0),
+                v["tokens_in"].as_u64().unwrap_or(0),
+                0,
+                v["tokens_out"].as_u64().unwrap_or(0),
+                v["cost_usd"].as_f64().unwrap_or(0.0),
+                reason,
+            ));
+        }
+        // Prepend so migrated rows sit before anything already written in the new format.
+        let path = history_path(claude_dir);
+        let existing = fs::read_to_string(&path).unwrap_or_default();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let tmp = path.with_extension("tmp");
+        if fs::write(&tmp, lines + &existing).is_ok() && fs::rename(&tmp, &path).is_ok() {
+            let _ = fs::remove_file(&legacy);
+        }
+    }
+    const LEGACY_PREFIXES: [&str; 5] = [
+        "statusline-tokcache-", "statusline-session-", "statusline-state-", "statusline-renderer-", "statusline-rt-",
+    ];
+    for dir in [claude_dir, home_claude_dir] {
+        let Ok(entries) = fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if LEGACY_PREFIXES.iter().any(|p| name.starts_with(p)) {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+    let _ = fs::remove_file(std::env::temp_dir().join("claude-statusline-dashboard.html"));
+}
+
+fn home_claude_dir() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".claude")
+}
+
+/// SessionEnd hook: stdin carries session_id, transcript_path and reason.
 pub fn handle_hook_end() {
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
-    let reason = serde_json::from_str::<Value>(&input)
-        .ok()
-        .and_then(|v| v["reason"].as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let project_dir = env::var("CLAUDE_PROJECT_DIR").unwrap_or_else(|_| {
-        env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
-    });
-
-    // Find the newest JSONL file in ~/.claude/projects/<slug>/
-    let home = home_dir_string();
-    let slug = project_dir.replace(['/', '\\'], "-");
-    let projects_dir = PathBuf::from(&home).join(".claude").join("projects").join(&slug);
-
-    let mut newest_file: Option<PathBuf> = None;
-    let mut newest_time = std::time::UNIX_EPOCH;
-
-    if let Ok(entries) = fs::read_dir(&projects_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
-                if let Ok(meta) = entry.metadata() {
-                    if let Ok(modified) = meta.modified() {
-                        if modified > newest_time {
-                            newest_time = modified;
-                            newest_file = Some(path);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let mut session_id = String::new();
-    let mut total_in:  u64 = 0;
-    let mut total_out: u64 = 0;
-    let mut cost = 0.0_f64;
-    let mut model = String::new();
-
-    if let Some(jsonl_path) = newest_file {
-        session_id = jsonl_path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default()
-            .to_string();
-
-        if let Ok(content) = fs::read_to_string(&jsonl_path) {
-            for line in content.lines() {
-                if line.trim().is_empty() { continue; }
-                if let Ok(entry) = serde_json::from_str::<Value>(line) {
-                    if entry["type"] == "assistant" {
-                        if let Some(usage) = entry["message"]["usage"].as_object() {
-                            total_in += usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
-                                // Keep parity with JS: Math.round(cache_read_input_tokens * 0.1)
-                                + (usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0).saturating_add(5) / 10)
-                                + usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                            total_out += usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                        }
-                        if model.is_empty() {
-                            model = entry["message"]["model"].as_str().unwrap_or("").to_string();
-                        }
-                    } else if entry["type"] == "cost" {
-                        cost += entry["cost_usd"].as_f64().unwrap_or(0.0);
-                    } else if entry["type"] == "message_start" && model.is_empty() {
-                        model = entry["message"]["model"].as_str().unwrap_or("").to_string();
-                    }
-                }
-            }
-        }
-    }
-
-    if model.is_empty() { model = "Claude".to_string(); }
-
-    // Update the most recent pending session for this project
-    let jsonl_path = get_jsonl_path();
-    let mut sessions = read_sessions(&jsonl_path);
-
-    if let Some(idx) = sessions.iter().rposition(|s| {
-        s["project_dir"].as_str() == Some(&project_dir) && s["exit_reason"] == "pending"
-    }) {
-        let start_str = sessions[idx]["start_time"].as_str().unwrap_or("").to_string();
-        let duration_seconds = parse_datetime_to_unix_secs(&start_str)
-            .map(|start| now_unix_secs().saturating_sub(start) as i64)
-            .unwrap_or(0);
-
-        sessions[idx]["session_id"]       = json!(if session_id.is_empty() { sessions[idx]["session_id"].as_str().unwrap_or("").to_string() } else { session_id });
-        sessions[idx]["model"]            = json!(model);
-        sessions[idx]["end_time"]         = json!(now_str());
-        sessions[idx]["tokens_in"]        = json!(total_in);
-        sessions[idx]["tokens_out"]       = json!(total_out);
-        sessions[idx]["cost_usd"]         = json!(cost);
-        sessions[idx]["duration_seconds"] = json!(duration_seconds);
-        sessions[idx]["exit_reason"]      = json!(reason);
-
-        write_sessions(&jsonl_path, &sessions);
-    }
+    let v: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
+    let claude_dir = session::claude_dir();
+    let now = session::now_secs();
+    migrate_legacy(&claude_dir, &home_claude_dir());
+    finalize(
+        &claude_dir,
+        v["session_id"].as_str().unwrap_or(""),
+        v["transcript_path"].as_str().unwrap_or(""),
+        v["reason"].as_str().unwrap_or("other"),
+        now,
+    );
+    sweep_stale(&claude_dir, now);
 }
 
 pub fn handle_history() {
@@ -246,10 +276,9 @@ pub fn handle_history() {
     let css      = include_str!("../dashboard-design/styles.css");
     let js       = include_str!("../dashboard-design/script.js");
 
-    let jsonl_path   = get_jsonl_path();
-    let all_sessions = read_sessions(&jsonl_path);
     // Most-recent first, cap at 100
-    let sessions: Vec<&Value> = all_sessions.iter().rev().take(100).collect();
+    let records = read_history(&history_path(&session::claude_dir()));
+    let sessions: Vec<&Record> = records.iter().take(100).collect();
 
     // Serialize the session array to JSON for client-side rendering
     let sessions_json = serde_json::to_string(&sessions).unwrap_or_else(|_| "[]".to_string());

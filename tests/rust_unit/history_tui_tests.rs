@@ -2,28 +2,18 @@ use super::*;
 
 fn session(project: &str, start: &str, tokens_in: u64, tokens_out: u64, cost: f64) -> Session {
     Session {
+        id: format!("{project}{start}"),
         project_name: project.to_string(),
         model: "claude-sonnet-4-6".to_string(),
+        start: 0,
         start_time: start.to_string(),
         duration_seconds: 120,
         tokens_in,
+        tokens_cache: 0,
         tokens_out,
         cost_usd: cost,
-        exit_reason: "normal".to_string(),
+        exit_reason: "clear".to_string(),
     }
-}
-
-#[test]
-fn parses_jsonl_and_sorts_descending() {
-    let data = r#"{"project_name":"b","model":"m","start_time":"2026-01-01 10:00:00","duration_seconds":10,"tokens_in":2,"tokens_out":3,"cost_usd":0.1,"exit_reason":"normal"}
-not-json
-{"project_name":"a","model":"m","start_time":"2026-01-02 09:00:00","duration_seconds":20,"tokens_in":5,"tokens_out":5,"cost_usd":0.2,"exit_reason":"interrupt"}
-"#;
-
-    let sessions = parse_sessions_from_str(data);
-    assert_eq!(sessions.len(), 2);
-    assert_eq!(sessions[0].project_name, "a");
-    assert_eq!(sessions[1].project_name, "b");
 }
 
 #[test]

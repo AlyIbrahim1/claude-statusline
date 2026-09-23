@@ -19,7 +19,7 @@ Two independent halves that never call each other, sharing only the settings pat
 
 **Rust binary** (`src/main.rs`): the primary renderer since v1.1.0. Pre-compiled per-platform and distributed as optional npm packages (`@alyibrahim/claude-statusline-{platform}-{arch}`). Falls back to `statusline.js` when no binary is found.
 
-**History module** (`src/history.rs`): handles `hook start`, `hook end`, and `history` subcommands for the Rust binary. Stores sessions as append-only JSONL at `~/.claude/statusline-history.jsonl`. The JS fallback (`scripts/history.js`) uses the same file and format — both implementations share one history store.
+**History module** (`src/history.rs`, mirrored by `scripts/history.js`): handles `hook end` and `history`. `hook start` is a no-op kept for SessionStart hooks written by older versions. At SessionEnd it catches up on the transcript, appends one line `h([id8,project,model,start,dur,in,cache,out,cost,reason]);` to `<config>/statusline/history.js`, deletes that session's state file, finalizes state files untouched for 24h, and migrates legacy files. The history file is append-only; readers keep the last line per id. Both implementations must write byte-identical lines.
 
 **Input model** (`src/status_model.rs`): parses stdin JSON into a typed struct.
 
@@ -30,7 +30,7 @@ Two independent halves that never call each other, sharing only the settings pat
 **Lifecycle half** (`scripts/`): runs at install/uninstall time and via the CLI.
 - `scripts/config.js` — `getSettingsPath()` (respects `$CLAUDE_CONFIG_DIR`), `atomicWrite()` (write to `.tmp` then rename), `resolveBinary()` (searches optionalDependency packages for a platform binary, returns path or null)
 - `scripts/setup.js` — adds/updates the `statusLine` key in settings.json, preserves all other keys, validates paths for unsafe shell chars
-- `scripts/uninstall.js` — removes the `statusLine` key, preserves other settings
+- `scripts/uninstall.js` — removes the `statusLine` key and our hooks, preserves other settings; with `{ removeData: true }` (CLI only, never npm lifecycle) also deletes `<config>/statusline/`
 - `scripts/plugin-autosetup.js` — exports `pluginAutoSetup()`, called by postinstall when `CLAUDE_PLUGIN_ROOT` is set; configures `statusLine` in settings.json using the binary (preferred) or JS fallback
 - `scripts/postinstall.js` — npm lifecycle hook; when `CLAUDE_PLUGIN_ROOT` is set (plugin install), calls pluginAutoSetup() and exits; otherwise runs the global-install setup path. Must always exit 0.
 - `scripts/preuninstall.js` — npm lifecycle hook; must always exit 0
@@ -75,9 +75,9 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 
 ## Tests
 
-136 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
+139 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
-91 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (65), `session_tests.rs` (12), `history_tests.rs` (9), `history_tui_tests.rs` (5). Run with `cargo test -- --test-threads=1`.
+91 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (65), `session_tests.rs` (12), `history_tests.rs` (10), `history_tui_tests.rs` (4). Run with `cargo test -- --test-threads=1`.
 
 ## Commits
 

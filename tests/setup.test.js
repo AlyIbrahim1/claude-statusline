@@ -120,15 +120,26 @@ describe('setup()', () => {
     jest.restoreAllMocks();
   });
 
-  test('setup adds SessionStart and SessionEnd hooks', () => {
+  test('setup adds only the SessionEnd hook', () => {
     const result = load()();
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
-    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
-    expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
-    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('--marker=claude-statusline-owned-v1');
-    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command)
-      .toContain(`"${process.execPath}"`);
-    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command.startsWith('node ')).toBe(false);
+    const endCommand = settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command;
+    expect(settings.hooks?.SessionStart).toBeUndefined();
+    expect(endCommand).toContain('hook end');
+    expect(endCommand).toContain('--marker=claude-statusline-owned-v1');
+    expect(endCommand).toContain(`"${process.execPath}"`);
+    expect(endCommand.startsWith('node ')).toBe(false);
+  });
+
+  test('setup removes the SessionStart hook written by older versions', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ hooks: { SessionStart: [{ matcher: '', hooks: [
+      { type: 'command', command: '"/usr/bin/node" "/old/statusline.js" hook start --marker=claude-statusline-owned-v1' },
+    ] }] } }));
+    load()();
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(settings.hooks?.SessionStart).toBeUndefined();
+    expect(settings.hooks?.SessionEnd?.length).toBe(1);
   });
 
   test('hooks are not duplicated when setup is called a second time', () => {
@@ -136,7 +147,6 @@ describe('setup()', () => {
     load()();
     const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
     // Each event should have exactly one hook entry, not two.
-    expect(settings.hooks?.SessionStart?.length).toBe(1);
     expect(settings.hooks?.SessionEnd?.length).toBe(1);
   });
 
@@ -152,7 +162,7 @@ describe('setup()', () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(settings.hooks?.PreToolUse).toBeDefined();
-    expect(settings.hooks?.SessionStart).toBeDefined();
+    expect(settings.hooks?.SessionEnd).toBeDefined();
   });
 
   test('returns error when hooks config contains invalid JSON', () => {
@@ -190,11 +200,11 @@ describe('toggleHistory()', () => {
 
   const load = () => require('../scripts/setup').toggleHistory;
 
-  test('enable adds SessionStart and SessionEnd hooks', () => {
+  test('enable adds the SessionEnd hook', () => {
     const result = load()(true);
     expect(result.ok).toBe(true);
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
-    expect(settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain('hook start');
+    expect(settings.hooks?.SessionStart).toBeUndefined();
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('hook end');
     expect(settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command).toContain('--marker=claude-statusline-owned-v1');
   });
@@ -211,9 +221,9 @@ describe('toggleHistory()', () => {
     const result = load()(true);
     expect(result.ok).toBe(true);
     const settings = JSON.parse(fs.readFileSync(result.settingsPath, 'utf8'));
-    const startCommand = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command || '';
-    expect(startCommand).toContain(`"${process.execPath}"`);
-    expect(startCommand.startsWith('node ')).toBe(false);
+    const endCommand = settings.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command || '';
+    expect(endCommand).toContain(`"${process.execPath}"`);
+    expect(endCommand.startsWith('node ')).toBe(false);
   });
 
   test('disable preserves unrelated hooks', () => {

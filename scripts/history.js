@@ -1,150 +1,164 @@
 'use strict';
+// Session history: one line per finished session in <claude_dir>/statusline/history.js.
+// Each line is `h([id,project,model,start,dur,in,cache,out,cost,reason]);` — valid JSON inside
+// a JS call, so the dashboard page can load the file directly with <script src>.
+// The file is only ever appended to. Readers keep the last line per id, so a resumed session
+// (or one finalized early by the stale sweep) is never counted twice. Mirrors src/history.rs.
 const fs = require('fs');
-const path = require('path');
 const os = require('os');
-const { normalizeProjectSlug } = require('./slug-utils');
+const path = require('path');
 const { getHomeDir } = require('./config');
+const session = require('./session');
 
-const JSONL_PATH = path.join(
-  getHomeDir(),
-  '.claude',
-  'statusline-history.jsonl'
-);
+// Session state files untouched this long belong to sessions that ended without SessionEnd.
+const STALE_SECS = 24 * 60 * 60;
 
-function safeJsonParse(value, fallback = null) {
-  try {
-    return JSON.parse(value);
-  } catch (e) {
-    return fallback;
-  }
+const historyPath = claudeDir => path.join(claudeDir, 'statusline', 'history.js');
+const toUtcString = secs => new Date(secs * 1000).toISOString().replace('T', ' ').slice(0, 19);
+
+function formatLine(id, project, model, start, dur, tin, tcache, tout, cost, reason) {
+  const row = [String(id).slice(0, 8), project, model, start, dur, tin, tcache, tout,
+    Math.round(cost * 10000) / 10000, reason];
+  return `h(${JSON.stringify(row)});\n`;
 }
 
-function now() {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
-
-function readSessions() {
-  if (!fs.existsSync(JSONL_PATH)) return [];
-  try {
-    return fs.readFileSync(JSONL_PATH, 'utf8')
-      .split('\n')
-      .filter(l => l.trim())
-      .map(l => JSON.parse(l));
-  } catch (e) {
-    return [];
-  }
-}
-
-function writeSessions(sessions) {
-  const tmp = JSONL_PATH + '.tmp';
-  fs.mkdirSync(path.dirname(JSONL_PATH), { recursive: true });
-  fs.writeFileSync(tmp, sessions.map(s => JSON.stringify(s)).join('\n') + '\n');
-  fs.renameSync(tmp, JSONL_PATH);
-}
-
-function handleHookStart() {
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const projectName = path.basename(projectDir);
-  const session = {
-    session_id:       `pending-${projectName}-${Date.now()}`,
-    project_dir:      projectDir,
-    project_name:     projectName,
-    model:            'pending',
-    start_time:       now(),
-    end_time:         now(),
-    tokens_in:        0,
-    tokens_out:       0,
-    cost_usd:         0,
-    duration_seconds: 0,
-    exit_reason:      'pending',
+function parseLine(line) {
+  const m = /^h\((.*)\);$/.exec(line.trim());
+  if (!m) return null;
+  let v;
+  try { v = JSON.parse(m[1]); } catch (e) { return null; }
+  if (!Array.isArray(v)) return null;
+  const s = i => (typeof v[i] === 'string' ? v[i] : '');
+  const n = i => (Number.isInteger(v[i]) && v[i] > 0 ? v[i] : 0);
+  return {
+    id: s(0), project_name: s(1), model: s(2), start: n(3), start_time: toUtcString(n(3)),
+    duration_seconds: n(4), tokens_in: n(5), tokens_cache: n(6), tokens_out: n(7),
+    cost_usd: typeof v[8] === 'number' ? v[8] : 0, exit_reason: s(9),
   };
+}
+
+// All sessions, newest first, keeping only the last line per id.
+function readHistory(file) {
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) {}
+  const latest = new Map();
+  const anonymous = [];
+  for (const rec of text.split('\n').map(parseLine)) {
+    if (!rec) continue;
+    if (rec.id) latest.set(rec.id, rec); else anonymous.push(rec);
+  }
+  return [...latest.values(), ...anonymous].sort((a, b) => b.start - a.start);
+}
+
+function append(file, text) {
+  if (!text) return;
   try {
-    fs.mkdirSync(path.dirname(JSONL_PATH), { recursive: true });
-    fs.appendFileSync(JSONL_PATH, JSON.stringify(session) + '\n');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // ponytail: one small O_APPEND write per call is atomic on local filesystems, so no lock.
+    fs.appendFileSync(file, text);
   } catch (e) {}
 }
 
+// History line for a session state, or '' when the session used no tokens.
+function recordLine(id, state, reason, now) {
+  if (state.tin + state.tcache + state.tout === 0) return '';
+  const start = state.start || now;
+  const dur = state.dur > 0 ? state.dur : Math.max(0, now - start);
+  return formatLine(id, state.project, state.model || 'Claude', start, dur,
+    state.tin, state.tcache, state.tout, state.cost, reason);
+}
+
+function removeState(file) {
+  for (const f of [file, file.replace(/\.json$/, '.tmp')]) {
+    try { fs.unlinkSync(f); } catch (e) {}
+  }
+}
+
+// Writes the history line for a finished session and deletes its state file.
+function finalize(claudeDir, sessionId, transcript, reason, now) {
+  const stateFile = session.statePath(claudeDir, sessionId);
+  if (!stateFile) return;
+  const state = session.load(stateFile);
+  // Catch up on the last turn, which may not have been rendered.
+  if (transcript) session.updateTokens(state, transcript);
+  append(historyPath(claudeDir), recordLine(sessionId, state, reason, now));
+  removeState(stateFile);
+}
+
+// Finalizes state files of sessions that ended without a SessionEnd hook (crash, kill).
+function sweepStale(claudeDir, now) {
+  const dir = path.join(claudeDir, 'statusline', 'sessions');
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch (e) { return; }
+  let lines = '';
+  for (const name of names) {
+    const file = path.join(dir, name);
+    let age = 0;
+    try { age = (Date.now() - fs.statSync(file).mtimeMs) / 1000; } catch (e) {}
+    if (age < STALE_SECS) continue;
+    if (name.endsWith('.json')) lines += recordLine(name.slice(0, -5), session.load(file), 'other', now);
+    removeState(file);
+  }
+  append(historyPath(claudeDir), lines);
+}
+
+// One-time move from the pre-1.7 layout: converts statusline-history.jsonl (always under
+// ~/.claude) and deletes the loose per-session and realtime files.
+function migrateLegacy(claudeDir, homeClaudeDir) {
+  const legacy = path.join(homeClaudeDir, 'statusline-history.jsonl');
+  let text = null;
+  try { text = fs.readFileSync(legacy, 'utf8'); } catch (e) {}
+  if (text !== null) {
+    let lines = '';
+    for (const raw of text.split('\n')) {
+      let v;
+      try { v = JSON.parse(raw); } catch (e) { continue; }
+      if (!v || !v.exit_reason || v.exit_reason === 'pending') continue;
+      const start = Math.floor(Date.parse(`${String(v.start_time).replace(' ', 'T')}Z`) / 1000) || 0;
+      // No id: the old hook guessed session ids and often gave several sessions the same
+      // one, so deduplicating would merge distinct rows.
+      lines += formatLine('', v.project_name || '', v.model || 'Claude', start,
+        v.duration_seconds || 0, v.tokens_in || 0, 0, v.tokens_out || 0, v.cost_usd || 0, v.exit_reason);
+    }
+    // Prepend so migrated rows sit before anything already written in the new format.
+    const file = historyPath(claudeDir);
+    let existing = '';
+    try { existing = fs.readFileSync(file, 'utf8'); } catch (e) {}
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(`${file}.tmp`, lines + existing);
+      fs.renameSync(`${file}.tmp`, file);
+      fs.unlinkSync(legacy);
+    } catch (e) {}
+  }
+  const prefixes = ['statusline-tokcache-', 'statusline-session-', 'statusline-state-', 'statusline-renderer-', 'statusline-rt-'];
+  for (const dir of new Set([claudeDir, homeClaudeDir])) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (e) { continue; }
+    for (const name of names) {
+      if (prefixes.some(p => name.startsWith(p))) {
+        try { fs.unlinkSync(path.join(dir, name)); } catch (e) {}
+      }
+    }
+  }
+  try { fs.unlinkSync(path.join(os.tmpdir(), 'claude-statusline-dashboard.html')); } catch (e) {}
+}
+
+// SessionEnd hook: stdin carries session_id, transcript_path and reason.
 function handleHookEnd() {
   let input = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', chunk => input += chunk);
   process.stdin.on('end', () => {
-    const reason = safeJsonParse(input, {}).reason || 'unknown';
-
-    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const home = getHomeDir();
-    const slug = normalizeProjectSlug(projectDir);
-    const projectsDir = path.join(home, '.claude', 'projects', slug);
-
-    // Read session stats from the most recently modified JSONL in the project dir
-    let sessionId = null;
-    let totalIn = 0, totalOut = 0, cost = 0, model = '';
-
-    if (fs.existsSync(projectsDir)) {
-      try {
-        let newestTime = 0, newestFile = null;
-        for (const file of fs.readdirSync(projectsDir)) {
-          if (!file.endsWith('.jsonl')) continue;
-          const p = path.join(projectsDir, file);
-          const mtime = fs.statSync(p).mtimeMs;
-          if (mtime > newestTime) { newestTime = mtime; newestFile = p; }
-        }
-        if (newestFile) {
-          sessionId = path.basename(newestFile, '.jsonl');
-          const lines = fs.readFileSync(newestFile, 'utf8').split('\n');
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const entry = safeJsonParse(line);
-            if (!entry) continue;
-            if (entry.type === 'assistant' && entry.message?.usage) {
-              const u = entry.message.usage;
-              totalIn  += (u.input_tokens || 0)
-                + Math.round((u.cache_read_input_tokens || 0) * 0.1)
-                + (u.cache_creation_input_tokens || 0);
-              totalOut += (u.output_tokens || 0);
-              if (!model) model = entry.message.model || '';
-            } else if (entry.type === 'cost') {
-              cost += (entry.cost_usd || 0);
-            } else if (entry.type === 'message_start' && !model) {
-              model = entry.message?.model || '';
-            }
-          }
-        }
-      } catch (e) {}
-    }
-
-    if (!model) model = 'Claude';
-
-    // Update the most recent pending session for this project
+    let v = {};
+    try { v = JSON.parse(input) || {}; } catch (e) {}
     try {
-      const sessions = readSessions();
-      let updatedIdx = -1;
-      for (let i = sessions.length - 1; i >= 0; i--) {
-        if (sessions[i].project_dir === projectDir && sessions[i].exit_reason === 'pending') {
-          updatedIdx = i;
-          break;
-        }
-      }
-
-      if (updatedIdx !== -1) {
-        const s = sessions[updatedIdx];
-        const startMs = new Date(s.start_time.replace(' ', 'T') + 'Z').getTime();
-        const durationSeconds = Math.round((Date.now() - startMs) / 1000);
-        sessions[updatedIdx] = {
-          ...s,
-          session_id:       sessionId || s.session_id,
-          model,
-          end_time:         now(),
-          tokens_in:        totalIn,
-          tokens_out:       totalOut,
-          cost_usd:         cost,
-          duration_seconds: durationSeconds,
-          exit_reason:      reason,
-        };
-        writeSessions(sessions);
-      }
+      const claudeDir = session.claudeDir();
+      const now = session.nowSecs();
+      migrateLegacy(claudeDir, path.join(getHomeDir(), '.claude'));
+      finalize(claudeDir, v.session_id || '', v.transcript_path || '', v.reason || 'other', now);
+      sweepStale(claudeDir, now);
     } catch (e) {}
-
     process.exit(0);
   });
 }
@@ -159,7 +173,7 @@ async function handleHistory() {
   const js       = fs.readFileSync(jsPath,       'utf8');
 
   // Most-recent first, cap at 100
-  const sessions = readSessions().reverse().slice(0, 100);
+  const sessions = readHistory(historyPath(session.claudeDir())).slice(0, 100);
   const sessionsJson = JSON.stringify(sessions);
 
   // Inject CSS, JS, and data into the template using the sentinel strings
@@ -179,4 +193,7 @@ async function handleHistory() {
   }
 }
 
-module.exports = { handleHookStart, handleHookEnd, handleHistory };
+module.exports = {
+  historyPath, formatLine, parseLine, readHistory, recordLine,
+  finalize, sweepStale, migrateLegacy, handleHookEnd, handleHistory,
+};

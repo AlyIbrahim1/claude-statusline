@@ -1,5 +1,6 @@
 //! Per-session state kept in `<claude_dir>/statusline/sessions/<session_id>.json`:
-//! transcript read cursors, deduplicated token totals, and git commit baselines.
+//! transcript read cursors, deduplicated token totals, git commit baselines, and the
+//! last values seen for the history record written at SessionEnd.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -40,6 +41,41 @@ pub struct State {
     pub tout: u64,
     /// Keyed by repo root.
     pub git: BTreeMap<String, GitCursor>,
+    /// Unix seconds of the first render.
+    pub start: u64,
+    pub model: String,
+    pub project: String,
+    /// stdin cost.total_cost_usd
+    pub cost: f64,
+    /// stdin cost.total_duration_ms / 1000
+    pub dur: u64,
+}
+
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+impl State {
+    /// Records the values the history needs from one statusline input.
+    pub fn note_input(&mut self, data: &serde_json::Value, model: &str, dir: &str) {
+        if self.start == 0 {
+            self.start = now_secs();
+        }
+        self.model = model.to_string();
+        let project_dir = data["workspace"]["project_dir"].as_str().filter(|s| !s.is_empty()).unwrap_or(dir);
+        self.project = crate::sanitize(
+            &Path::new(project_dir).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        );
+        if let Some(cost) = data["cost"]["total_cost_usd"].as_f64() {
+            self.cost = cost;
+        }
+        if let Some(ms) = data["cost"]["total_duration_ms"].as_u64() {
+            self.dur = ms / 1000;
+        }
+    }
 }
 
 fn home_dir() -> PathBuf {

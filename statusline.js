@@ -100,8 +100,7 @@ if (cmd === 'history') {
 } else if (cmd === 'hook') {
   const hookcmd = process.argv[3];
   if (hookcmd === 'start') {
-    require('./scripts/history').handleHookStart();
-    return;
+    return; // No-op: kept so SessionStart hooks written by older versions still exit 0.
   } else if (hookcmd === 'end') {
     require('./scripts/history').handleHookEnd();
     return;
@@ -159,6 +158,7 @@ process.stdin.on('end', () => {
     const stateFile = sessionState.statePath(sessionState.claudeDir(), session);
     const state = sessionState.load(stateFile); // empty state when there is no session id
     const loaded = JSON.stringify(state);
+    if (stateFile) sessionState.noteInput(state, data, model, dir);
 
     // Session cost — only show for API key users; rate_limits presence means subscription
     const isSubscription = data.rate_limits !== undefined;

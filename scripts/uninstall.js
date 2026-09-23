@@ -1,8 +1,14 @@
 'use strict';
 const fs = require('fs');
-const { getSettingsPath, atomicWrite, isPlainObject } = require('./config');
+const path = require('path');
+const { getSettingsPath, getClaudeConfigDir, atomicWrite, isPlainObject } = require('./config');
 
-function uninstall() {
+// removeData also deletes <config>/statusline/ (history, session state, dashboard). Only the
+// explicit CLI command passes it; npm lifecycle hooks may run during upgrades.
+function uninstall({ removeData = false } = {}) {
+  if (removeData) {
+    fs.rmSync(path.join(getClaudeConfigDir(), 'statusline'), { recursive: true, force: true });
+  }
   const settingsPath = getSettingsPath();
   if (!fs.existsSync(settingsPath)) return { ok: true };
 
