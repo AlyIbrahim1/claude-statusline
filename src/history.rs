@@ -82,6 +82,8 @@ fn format_line(id: &str, project: &str, model: &str, start: u64, dur: u64,
                tin: u64, tcache: u64, tout: u64, cost: f64, reason: &str) -> String {
     let id: String = id.chars().take(8).collect();
     let cost = (cost * 10_000.0).round() / 10_000.0;
+    // Whole numbers as integers ("0", not "0.0"), matching JSON.stringify in scripts/history.js.
+    let cost = if cost.fract() == 0.0 { json!(cost as i64) } else { json!(cost) };
     let row = json!([id, project, model, start, dur, tin, tcache, tout, cost, reason]);
     format!("h({row});\n")
 }
@@ -156,6 +158,12 @@ fn remove_state(path: &Path) {
 /// Writes the history line for a finished session and deletes its state file.
 pub fn finalize(claude_dir: &Path, session_id: &str, transcript: &str, reason: &str, now: u64) {
     let Some(state_file) = session::state_path(claude_dir, session_id) else { return };
+    // No state: never rendered, or already finalized by another SessionEnd hook (plugin and
+    // npm install both registered). Recording from the transcript alone would overwrite the
+    // real row with one missing project, model, cost and duration.
+    if !state_file.exists() {
+        return;
+    }
     let mut state = session::load(&state_file);
     if !transcript.is_empty() {
         // Catch up on the last turn, which may not have been rendered.

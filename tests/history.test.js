@@ -28,6 +28,21 @@ describe('history store', () => {
     expect(history.parseLine(history.recordLine('x', state(1, 1, { project }), 'other', 0)).project_name).toBe(project);
   });
 
+  test('whole-number cost is written as an integer, like the Rust side', () => {
+    expect(history.recordLine('x', state(1, 1, { cost: 0 }), 'clear', 0)).toContain(',1,0,1,0,"clear"]');
+  });
+
+  test('a second SessionEnd for the same session does not overwrite the record', () => {
+    const transcript = path.join(tmp, 't.jsonl');
+    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { id: 'm', usage: { input_tokens: 3, output_tokens: 2 } } })}\n`);
+    session.save(session.statePath(tmp, 'twice'), state(10, 5));
+    history.finalize(tmp, 'twice', transcript, 'clear', 1);
+    history.finalize(tmp, 'twice', transcript, 'clear', 2);
+    const text = fs.readFileSync(history.historyPath(tmp), 'utf8');
+    expect(text.split('\n').filter(Boolean)).toHaveLength(1);
+    expect(history.readHistory(history.historyPath(tmp))[0]).toMatchObject({ project_name: 'proj', tokens_in: 13 });
+  });
+
   test('sessions without tokens are not recorded', () => {
     expect(history.recordLine('x', session.load(null), 'clear', 5)).toBe('');
   });

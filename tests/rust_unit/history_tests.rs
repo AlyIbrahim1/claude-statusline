@@ -89,6 +89,22 @@ fn finalize_appends_record_catches_up_transcript_and_deletes_state() {
 }
 
 #[test]
+fn finalize_without_state_file_writes_nothing() {
+    let d = tmp_dir("nostate");
+    let transcript = d.join("t.jsonl");
+    fs::write(&transcript, "{\"type\":\"assistant\",\"message\":{\"id\":\"m\",\"usage\":{\"input_tokens\":3,\"output_tokens\":2}}}\n").unwrap();
+    finalize(&d, "gone", &transcript.to_string_lossy(), "clear", 1);
+    assert!(!history_path(&d).exists());
+    fs::remove_dir_all(&d).ok();
+}
+
+#[test]
+fn whole_number_cost_is_written_like_json_stringify() {
+    let st = State { cost: 0.0, ..state(1, 1) };
+    assert!(record_line("x", &st, "clear", 0).contains(",1,0,1,0,\"clear\"]"));
+}
+
+#[test]
 fn finalize_ignores_unsafe_session_ids() {
     let d = tmp_dir("unsafe");
     finalize(&d, "../x", "", "clear", 1);

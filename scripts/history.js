@@ -77,7 +77,10 @@ function removeState(file) {
 // Writes the history line for a finished session and deletes its state file.
 function finalize(claudeDir, sessionId, transcript, reason, now) {
   const stateFile = session.statePath(claudeDir, sessionId);
-  if (!stateFile) return;
+  // No state: never rendered, or already finalized by another SessionEnd hook (plugin and
+  // npm install both registered). Recording from the transcript alone would overwrite the
+  // real row with one missing project, model, cost and duration.
+  if (!stateFile || !fs.existsSync(stateFile)) return;
   const state = session.load(stateFile);
   // Catch up on the last turn, which may not have been rendered.
   if (transcript) session.updateTokens(state, transcript);
