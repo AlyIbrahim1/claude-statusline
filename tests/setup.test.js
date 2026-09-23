@@ -108,6 +108,46 @@ describe('setup()', () => {
     fs.rmSync(fakeDir, { recursive: true });
   });
 
+  test('history hook runs the same binary as the statusline', () => {
+    const fakeBin = path.join(tmpDir, 'bin', 'statusline');
+    jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(fakeBin);
+    delete require.cache[require.resolve('../scripts/setup')];
+    require('../scripts/setup').setup();
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+    expect(settings.hooks.SessionEnd[0].hooks[0].command)
+      .toBe(`"${fakeBin}" hook end --marker=claude-statusline-owned-v1`);
+  });
+
+  test('accepts Windows paths with backslashes and parentheses', () => {
+    const winBin = 'C:\\Program Files (x86)\\nodejs\\node_modules\\statusline.exe';
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(winBin);
+      delete require.cache[require.resolve('../scripts/setup')];
+      const result = require('../scripts/setup').setup();
+      expect(result.ok).toBe(true);
+      const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
+      expect(settings.statusLine.command).toBe(`"${winBin}"`);
+      expect(settings.hooks.SessionEnd[0].hooks[0].command).toBe(`"${winBin}" hook end --marker=claude-statusline-owned-v1`);
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
+  });
+
+  test('rejects paths with shell-expanding characters', () => {
+    jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue('/opt/$(evil)/statusline');
+    const execPath = Object.getOwnPropertyDescriptor(process, 'execPath');
+    Object.defineProperty(process, 'execPath', { value: '/usr/bin/`node`' });
+    try {
+      delete require.cache[require.resolve('../scripts/setup')];
+      expect(require('../scripts/setup').setup().ok).toBe(false);
+    } finally {
+      Object.defineProperty(process, 'execPath', execPath);
+    }
+  });
+
   test('falls back to node scriptPath when no binary found', () => {
     jest.spyOn(require('../scripts/config'), 'resolveBinary').mockReturnValue(null);
 

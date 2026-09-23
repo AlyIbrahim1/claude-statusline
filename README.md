@@ -207,7 +207,7 @@ See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform 
 
 </div>
 
-- **Node.js ≥16** — for install/uninstall scripts only (not needed at runtime on supported platforms)
+- **Node.js ≥18** — for install/uninstall scripts only (not needed at runtime on supported platforms)
 - **git** — optional, enables branch display
 
 ---

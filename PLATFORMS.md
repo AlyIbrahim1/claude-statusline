@@ -2,7 +2,7 @@
 
 # Platform Compatibility Guide
 
-**claude-statusline** runs on every platform that supports Node.js ≥16.  
+**claude-statusline** runs on every platform that supports Node.js ≥18.  
 Pre-built Rust binaries are provided for the five most common targets. All others fall back to a JavaScript implementation automatically.
 
 </div>
@@ -57,7 +57,7 @@ CLAUDE_CONFIG_DIR=/path/to/config claude-statusline setup
 ```
 
 **Notes:**
-- Requires Node.js ≥16 for the install scripts — the binary itself has no Node dependency at runtime
+- Requires Node.js ≥18 for the install scripts — the binary itself has no Node dependency at runtime
 - `git` is optional but required for branch display
 - WSL2 (Windows Subsystem for Linux) is fully supported — treated as Linux x64
 
@@ -122,7 +122,7 @@ claude-statusline setup
 Settings are written to `%USERPROFILE%\.claude\settings.json`.
 
 **Notes:**
-- Paths containing backticks, `$`, `!`, or `()` are rejected by setup as unsafe shell characters — avoid installing to such paths
+- Paths containing `"`, backticks, `$` or `!` are rejected by setup as unsafe shell characters — avoid installing to such paths. Backslashes and parentheses (e.g. `Program Files (x86)`) are fine
 - `git` for Windows provides branch display — install from [git-scm.com](https://git-scm.com) if not already present
 - WSL2 users: run the install inside WSL, not in the Windows host — you get the Linux binary and Linux paths that way
 
@@ -141,7 +141,7 @@ If no pre-built binary is found for your platform (e.g. Linux arm32, FreeBSD, or
 | | Rust binary | JS fallback |
 |---|---|---|
 | Startup time | ~5ms | ~100ms |
-| Runtime dependency | None | Node.js ≥16 |
+| Runtime dependency | None | Node.js ≥18 |
 | Feature parity | Full | Full |
 
 All features work identically. The only difference is startup latency — visible as a brief delay before the statusline appears after each response.

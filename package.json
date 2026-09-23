@@ -29,7 +29,7 @@
     "url": "https://github.com/AlyIbrahim1/claude-statusline/issues"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "bin": {
     "claude-statusline": "bin/cli.js"
@@ -48,6 +48,7 @@
     "bin/",
     "scripts/",
     "hooks/",
+    ".claude/commands/",
     "dashboard-design/dashboard.html",
     "README.md"
   ],

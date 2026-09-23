@@ -1,12 +1,12 @@
 {
   "hooks": {
-    "SessionStart": [
+    "SessionEnd": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_NODE_EXEC} \"${CLAUDE_PLUGIN_ROOT}/scripts/plugin-autosetup.js\" --marker=${HOOK_MARKER}"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/statusline.js\" hook end"
           }
         ]
       }

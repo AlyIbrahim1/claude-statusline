@@ -8,7 +8,7 @@ Before your first pull request is merged, you'll be asked to sign the [CLA](CLA.
 
 ## Development Setup
 
-**Prerequisites:** Node.js 16+ (18+ recommended), Rust toolchain (for binary changes only)
+**Prerequisites:** Node.js 18+, Rust toolchain (for binary changes only)
 
 ```bash
 git clone https://github.com/AlyIbrahim1/claude-statusline.git

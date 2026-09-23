@@ -87,13 +87,24 @@ describe('plugin-autosetup.js (subprocess)', () => {
     }
   });
 
-  test('handles invalid JSON in existing settings.json gracefully', () => {
-    fs.writeFileSync(path.join(tmpDir, 'settings.json'), '{ bad json }');
-    const result = run({ CLAUDE_CONFIG_DIR: tmpDir, CLAUDE_PLUGIN_ROOT: pluginDir });
+  test('never overwrites a settings.json it cannot parse', () => {
+    for (const content of ['{ "model": "x", }', '[1]', 'null']) {
+      fs.writeFileSync(path.join(tmpDir, 'settings.json'), content);
+      const result = run({ CLAUDE_CONFIG_DIR: tmpDir, CLAUDE_PLUGIN_ROOT: pluginDir });
+      expect(result.status).toBe(0);
+      expect(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8')).toBe(content);
+    }
+  });
+
+  test('--force replaces an existing statusLine and reports it', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ statusLine: { type: 'command', command: '"old"' } }));
+    const result = spawnSync(process.execPath, [SCRIPT, '--force'], {
+      env: { ...process.env, CLAUDE_CONFIG_DIR: tmpDir, CLAUDE_PLUGIN_ROOT: pluginDir },
+    });
     expect(result.status).toBe(0);
-    // Invalid JSON means settings read as {}, statusLine gets written.
-    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'));
-    expect(settings.statusLine).toBeDefined();
+    expect(result.stdout.toString()).toContain('configured');
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8')).statusLine.command).not.toBe('"old"');
   });
 
   test('creates settings.json and parent directory when they do not exist', () => {

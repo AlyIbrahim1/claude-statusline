@@ -4,11 +4,23 @@ const path = require('path');
 const config = require('./config');
 const { getSettingsPath, atomicWrite, isPlainObject } = config;
 
-const UNSAFE_CHARS = /["`$!()\\]/;
 const HOOK_MARKER = 'claude-statusline-owned-v1';
 
-function buildNodeExecCommand() {
-  return `"${process.execPath}"`;
+// Characters that break or get expanded inside a double-quoted shell string. On Windows,
+// backslashes are the path separator and "Program Files (x86)" is common; both are safe in quotes.
+function unsafeChars() {
+  return process.platform === 'win32' ? /["`$!]/ : /["`$!()\\]/;
+}
+
+// What Claude Code runs for both the statusline and the history hook: the native binary when
+// installed, else node + statusline.js. Null when no safe command can be built.
+function statuslineCommand() {
+  const unsafe = unsafeChars();
+  const binaryPath = config.resolveBinary();
+  if (binaryPath && !unsafe.test(binaryPath)) return `"${binaryPath}"`;
+  const scriptPath = path.resolve(__dirname, '../statusline.js');
+  if (unsafe.test(process.execPath) || unsafe.test(scriptPath)) return null;
+  return `"${process.execPath}" "${scriptPath}"`;
 }
 
 function resolveHooksFromFile(filePath, replacements) {
@@ -47,7 +59,8 @@ function setup({ force = false } = {}) {
     return { ok: false, error: `Could not locate statusline.js at ${scriptPath}` };
   }
 
-  if (UNSAFE_CHARS.test(process.execPath) || UNSAFE_CHARS.test(scriptPath)) {
+  const command = statuslineCommand();
+  if (!command) {
     return { ok: false, error: 'Node.js path or install path contains unsupported characters.' };
   }
 
@@ -64,15 +77,10 @@ function setup({ force = false } = {}) {
     }
   }
 
-  const binaryPath = config.resolveBinary();
-  const safeBinary = binaryPath && !UNSAFE_CHARS.test(binaryPath) ? binaryPath : null;
-  const command = safeBinary
-    ? `"${safeBinary}"`
-    : `"${process.execPath}" "${scriptPath}"`;
   settings.statusLine = { type: 'command', command };
 
   try {
-    updateHooks(settings, true, { nodeExecCommand: buildNodeExecCommand() });
+    updateHooks(settings, true, { command });
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -88,35 +96,22 @@ function setup({ force = false } = {}) {
   return { ok: true, settingsPath };
 }
 
-function updateHooks(settings, enable, { nodeExecCommand = buildNodeExecCommand() } = {}) {
+function updateHooks(settings, enable, { command = statuslineCommand() } = {}) {
   if (!settings.hooks) settings.hooks = {};
+  if (enable && !command) {
+    throw new Error('Node.js path or install path contains unsupported characters.');
+  }
 
-  const packageRoot = path.resolve(__dirname, '..');
-  const escapedRoot = packageRoot.replace(/\\/g, '\\\\');
-  const escapedNodeExec = nodeExecCommand
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"');
-
-  // Install only hooks.json; recognise commands from every hooks file so all of ours get removed.
-  const installFile = path.join(packageRoot, 'hooks', 'hooks.json');
-  const allFiles = [
-    installFile,
-    path.join(packageRoot, 'hooks', 'plugin-setup.json'),
-  ].filter(f => fs.existsSync(f));
-
-  // Collect every resolved command across all our hooks files for exact-match removal.
+  // Values are substituted into JSON text, so they must be JSON-escaped.
+  const resolvedHooks = resolveHooksFromFile(path.join(__dirname, '..', 'hooks', 'hooks.json'), {
+    STATUSLINE_CMD: JSON.stringify(command || '').slice(1, -1),
+    HOOK_MARKER,
+  });
   const ourCommands = new Set();
-  for (const f of allFiles) {
-    const resolved = resolveHooksFromFile(f, {
-      CLAUDE_PLUGIN_ROOT: escapedRoot,
-      CLAUDE_NODE_EXEC: escapedNodeExec,
-      HOOK_MARKER,
-    });
-    for (const entries of Object.values(resolved)) {
-      for (const entry of entries) {
-        for (const hook of (entry.hooks || [])) {
-          if (hook.command) ourCommands.add(hook.command);
-        }
+  for (const entries of Object.values(resolvedHooks)) {
+    for (const entry of entries) {
+      for (const hook of (entry.hooks || [])) {
+        if (hook.command) ourCommands.add(hook.command);
       }
     }
   }
@@ -154,11 +149,6 @@ function updateHooks(settings, enable, { nodeExecCommand = buildNodeExecCommand(
   }
 
   if (enable) {
-    const resolvedHooks = resolveHooksFromFile(installFile, {
-      CLAUDE_PLUGIN_ROOT: escapedRoot,
-      CLAUDE_NODE_EXEC: escapedNodeExec,
-      HOOK_MARKER,
-    });
     for (const [event, entries] of Object.entries(resolvedHooks)) {
       settings.hooks[event] = [...(settings.hooks[event] || []), ...entries];
     }
@@ -184,7 +174,7 @@ function toggleHistory(enable) {
   }
 
   try {
-    updateHooks(settings, enable, { nodeExecCommand: buildNodeExecCommand() });
+    updateHooks(settings, enable);
   } catch (err) {
     return { ok: false, error: err.message };
   }

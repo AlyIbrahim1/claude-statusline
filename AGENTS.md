@@ -29,9 +29,9 @@ Two independent halves that never call each other, sharing only the settings pat
 
 **Lifecycle half** (`scripts/`): runs at install/uninstall time and via the CLI.
 - `scripts/config.js` — `getSettingsPath()` (respects `$CLAUDE_CONFIG_DIR`), `atomicWrite()` (write to `.tmp` then rename), `resolveBinary()` (searches optionalDependency packages for a platform binary, returns path or null)
-- `scripts/setup.js` — adds/updates the `statusLine` key in settings.json, preserves all other keys, validates paths for unsafe shell chars
+- `scripts/setup.js` — adds/updates the `statusLine` key and the SessionEnd hook in settings.json, preserves all other keys. `statuslineCommand()` builds the one command used for both (binary if installed, else node + statusline.js) and validates it for unsafe shell chars. `hooks/hooks.json` is the settings template (`${STATUSLINE_CMD}`, `${HOOK_MARKER}`); `hooks/plugin-hooks.json` is what the plugin registers (only `${CLAUDE_PLUGIN_ROOT}` is substituted by Claude Code in plugin hooks)
 - `scripts/uninstall.js` — removes the `statusLine` key and our hooks, preserves other settings; with `{ removeData: true }` (CLI only, never npm lifecycle) also deletes `<config>/statusline/`
-- `scripts/plugin-autosetup.js` — exports `pluginAutoSetup()`, called by postinstall when `CLAUDE_PLUGIN_ROOT` is set; configures `statusLine` in settings.json using the binary (preferred) or JS fallback
+- `scripts/plugin-autosetup.js` — exports `pluginAutoSetup()`, called by postinstall when `CLAUDE_PLUGIN_ROOT` is set; configures `statusLine` in settings.json using the binary (preferred) or JS fallback. Never writes a settings.json it cannot parse. `--force` (used by the plugin `/setup` command) replaces an existing statusLine
 - `scripts/postinstall.js` — npm lifecycle hook; when `CLAUDE_PLUGIN_ROOT` is set (plugin install), calls pluginAutoSetup() and exits; otherwise runs the global-install setup path. Must always exit 0.
 - `scripts/preuninstall.js` — npm lifecycle hook; must always exit 0
 - `bin/cli.js` — CLI entry point
@@ -67,7 +67,7 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 
 - `atomicWrite` uses a `.tmp` file then renames — never write settings.json directly
 - npm lifecycle hooks (`postinstall.js`, `preuninstall.js`) catch all errors and always exit 0; a failed hook must not fail `npm install` or `npm uninstall`
-- Setup validates Node and script paths against unsafe shell characters (backticks, `$`, `!`, etc.) because the command is embedded in JSON as a shell string
+- Setup validates Node and script paths against unsafe shell characters (`"`, backticks, `$`, `!`; plus `\` and `()` except on Windows, where they are normal path characters) because the command is embedded in JSON as a shell string
 - CI guard in `setup.js`: auto-setup is skipped unless `force=true` or `npm_config_global=true`, so local `npm install` does not modify settings
 - Context window display normalizes by dividing raw context by `0.835` to account for the 16.5% auto-compact buffer
 - Effort level comes only from stdin `effort.level`
@@ -75,7 +75,7 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 
 ## Tests
 
-140 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
+144 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
 93 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (65), `session_tests.rs` (12), `history_tests.rs` (12), `history_tui_tests.rs` (4). Run with `cargo test -- --test-threads=1`.
 
