@@ -5,42 +5,72 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # release.yml runs this whole workflow against the tagged commit before building anything.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   version-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
       - run: node scripts/check-version-alignment.js
+      # package.json and package-lock.json must agree, or `npm ci` fails for everyone.
+      - run: npm ci --ignore-scripts
+      - run: npm audit --omit=dev --audit-level=high
 
   test-js:
     needs: version-check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        include:
+          # engines: node >=18
+          - { os: ubuntu-latest, node: 18 }
+          - { os: ubuntu-latest, node: 20 }
+          - { os: ubuntu-latest, node: 22 }
+          - { os: ubuntu-latest, node: 24 }
+          - { os: windows-latest, node: 22 }
+          - { os: macos-latest, node: 22 }
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: node node_modules/jest/bin/jest.js
 
+  # Rust tests, then the real install path on each OS: pack, `npm install -g`, render, SessionEnd,
+  # uninstall, with the binary built here (the platform package for an unreleased version is
+  # not on npm yet).
   test-rust:
     needs: version-check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -49,51 +79,19 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-      - run: cargo test -- --test-threads=1
+      - run: cargo test --locked -- --test-threads=1
+      # Style lints are not enforced; lints that flag likely bugs are.
+      - run: cargo clippy --locked --all-targets -- -D clippy::correctness -D clippy::suspicious
+      - run: cargo build --locked --release
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install smoke test
+        shell: bash
+        run: node .github/scripts/smoke-install.js --local-binary "target/release/statusline$([ "$RUNNER_OS" = Windows ] && echo .exe)"
       # Catch release-only build breaks before tagging (release builds Linux as static musl).
       - name: Build static musl release binary
+        if: runner.os == 'Linux'
         run: |
           rustup target add x86_64-unknown-linux-musl
-          cargo build --release --target x86_64-unknown-linux-musl
-
-  test-rust-windows:
-    needs: version-check
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test -- --test-threads=1
-
-  dispatch-release:
-    needs: [test-js, test-rust, test-rust-windows]
-    if: |
-      needs.test-js.result == 'success' &&
-      needs.test-rust.result == 'success' &&
-      needs.test-rust-windows.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check for version tag on this commit
-        id: tag
-        run: |
-          TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]' | head -1)
-          echo "name=$TAG" >> $GITHUB_OUTPUT
-      - name: Dispatch release if tagged
-        if: steps.tag.outputs.name != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createDispatchEvent({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              event_type: 'release-ready',
-              client_payload: {
-                tag: '${{ steps.tag.outputs.name }}',
-                sha: context.sha
-              }
-            })
+          cargo build --locked --release --target x86_64-unknown-linux-musl
