@@ -17,9 +17,6 @@ serde = { version = "1", features = ["derive"] }
 open = "5.1"
 ratatui = "0.29"
 
-[target.'cfg(unix)'.dependencies]
-crossterm = "0.28"
-
 [profile.release]
 strip = true
 opt-level = "z"

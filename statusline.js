@@ -6,42 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
 const { normalizeProjectSlug } = require('./scripts/slug-utils');
-const {
-  getHomeDir,
-  getRealtimePaths,
-  atomicWrite: atomicWriteJson,
-} = require('./scripts/config');
-
-function realtimeEnabled() {
-  const v = process.env.CLAUDE_STATUSLINE_REALTIME;
-  return v === '1' || v === 'true' || v === 'TRUE';
-}
-
-function emitRealtimeEvent(eventType, payload) {
-  if (!realtimeEnabled()) return;
-  try {
-    const { claudeDir, ttySlug, statePath, registryPath, socketPath } = getRealtimePaths();
-    const now = Date.now();
-
-    atomicWriteJson(registryPath, {
-      version: 1,
-      pid: process.pid,
-      tty_slug: ttySlug,
-      heartbeat_at_ms: now,
-      socket_path: socketPath,
-    });
-
-    atomicWriteJson(statePath, {
-      version: 1,
-      event_type: eventType,
-      tty_slug: ttySlug,
-      updated_at_ms: now,
-      payload: payload || {},
-    });
-  } catch (_) {
-    // Silent fail - never break statusline rendering
-  }
-}
+const { getHomeDir } = require('./scripts/config');
 
 function stripSgr(s) {
   return String(s).replace(/\x1b\[[0-9;]*m/g, '');
@@ -136,18 +101,10 @@ if (cmd === 'history') {
 } else if (cmd === 'hook') {
   const hookcmd = process.argv[3];
   if (hookcmd === 'start') {
-    emitRealtimeEvent('session_start', {});
     require('./scripts/history').handleHookStart();
     return;
   } else if (hookcmd === 'end') {
-    emitRealtimeEvent('session_end', {});
     require('./scripts/history').handleHookEnd();
-    return;
-  }
-} else if (cmd === 'realtime') {
-  const subcmd = process.argv[3];
-  if (subcmd === 'shutdown') {
-    emitRealtimeEvent('shutdown', {});
     return;
   }
 }
@@ -215,7 +172,6 @@ process.stdin.on('end', () => {
   try {
     const sanitize = s => String(s).replace(/\x1b\[[0-9;]*[mGKHFABCDJ]/g, '');
     const data = JSON.parse(input);
-    emitRealtimeEvent('state_update', data);
     const model = sanitize(data.model?.display_name || 'Claude');
     const dir = data.workspace?.current_dir || process.cwd();
     const session = data.session_id || '';
@@ -247,33 +203,8 @@ process.stdin.on('end', () => {
       }
     }
 
-    // Current task from todos
-    let task = '';
-    let activeAgents = 0;
     const homeDir = getHomeDir();
     const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(homeDir, '.claude');
-    const todosDir = path.join(claudeDir, 'todos');
-    if (session && fs.existsSync(todosDir)) {
-      try {
-        const files = fs.readdirSync(todosDir)
-          .filter(f => f.startsWith(session) && f.includes('-agent-') && f.endsWith('.json'))
-          .map(f => ({ name: f, mtime: fs.statSync(path.join(todosDir, f)).mtime }))
-          .sort((a, b) => b.mtime - a.mtime);
-
-        for (const f of files) {
-          try {
-            const todos = JSON.parse(fs.readFileSync(path.join(todosDir, f.name), 'utf8'));
-            const inProgress = todos.find(t => t.status === 'in_progress');
-            if (inProgress) {
-              activeAgents++;
-              if (!task) task = sanitize(inProgress.activeForm || '');
-            }
-          } catch (e) {}
-        }
-      } catch (e) {
-        // Silently fail on file system errors - don't break statusline
-      }
-    }
 
     // Session cost — only show for API key users; rate_limits presence means subscription
     const isSubscription = data.rate_limits !== undefined;
@@ -388,10 +319,8 @@ process.stdin.on('end', () => {
       }
     } catch (e) {}
 
-    const agentDisplay = activeAgents > 0 ? ` \x1b[0m\x1b[36m↪ ${activeAgents}\x1b[0m` : '';
-    const modelDisplay = `\x1b[0m\x1b[94m${model}\x1b[0m` + effortSuffix + agentDisplay;
+    const modelDisplay = `\x1b[0m\x1b[94m${model}\x1b[0m` + effortSuffix;
     const line1Chunks = [modelDisplay];
-    if (task) line1Chunks.push(`\x1b[1m${task}\x1b[0m`);
     line1Chunks.push(`${dirDisplay}${ctx}`);
 
     const columns = terminalColumns();

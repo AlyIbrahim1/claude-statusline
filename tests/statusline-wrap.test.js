@@ -88,31 +88,6 @@ describe('statusline wrapping', () => {
     expect(lines.length).toBe(3);
   });
 
-  test('writes realtime state snapshot when feature flag is enabled', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-rt-wrap-'));
-    const input = {
-      model: { display_name: 'claude-sonnet-4-6' },
-      workspace: { current_dir: '/tmp/myproject' },
-      session_id: 'sess-1',
-      context_window: { remaining_percentage: 88 },
-    };
-
-    const result = runStatusline(input, {
-      CLAUDE_STATUSLINE_REALTIME: '1',
-      CLAUDE_STATUSLINE_TTY: 'pts/77',
-      CLAUDE_CONFIG_DIR: tmp,
-    });
-
-    expect(result.status).toBe(0);
-    const statePath = path.join(tmp, 'statusline-state-pts-77.json');
-    expect(fs.existsSync(statePath)).toBe(true);
-    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    expect(state.event_type).toBe('state_update');
-    expect(state.tty_slug).toBe('pts-77');
-
-    fs.rmSync(tmp, { recursive: true, force: true });
-  });
-
   test('exits cleanly on malformed stdin JSON', () => {
     const result = runStatuslineRaw('{"model":');
     expect(result.status).toBe(0);

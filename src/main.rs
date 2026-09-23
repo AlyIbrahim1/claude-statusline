@@ -1,7 +1,5 @@
 mod history;
 mod history_tui;
-mod realtime;
-mod realtime_paths;
 mod status_model;
 
 use std::io::Read;
@@ -257,57 +255,6 @@ fn effort_suffix(model: &str, claude_dir: &std::path::Path) -> String {
     effort_suffix_from_level(&raw.to_lowercase())
 }
 
-/// Scans `claude_dir/todos/` for agent todo files matching the session.
-/// Returns (task_display_string, active_agent_count). All errors silently ignored.
-fn scan_todos(claude_dir: &std::path::Path, session: &str) -> (String, usize) {
-    use std::fs;
-
-    if session.is_empty() {
-        return (String::new(), 0);
-    }
-    let todos_dir = claude_dir.join("todos");
-    if !todos_dir.exists() {
-        return (String::new(), 0);
-    }
-
-    let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> = fs::read_dir(&todos_dir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            let name = e.file_name();
-            let n = name.to_string_lossy();
-            n.starts_with(session) && n.contains("-agent-") && n.ends_with(".json")
-        })
-        .filter_map(|e| {
-            let mtime = e.metadata().ok()?.modified().ok()?;
-            Some((e.path(), mtime))
-        })
-        .collect();
-
-    // Sort newest first (mtime descending)
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
-
-    let mut task = String::new();
-    let mut active_agents = 0usize;
-
-    for (path, _) in &entries {
-        if let Ok(text) = fs::read_to_string(path) {
-            if let Ok(serde_json::Value::Array(todos)) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(in_progress) = todos.iter().find(|t| t["status"] == "in_progress") {
-                    active_agents += 1;
-                    if task.is_empty() {
-                        task = sanitize(in_progress["activeForm"].as_str().unwrap_or(""));
-                    }
-                }
-            }
-        }
-    }
-
-    (task, active_agents)
-}
-
 /// Returns the user's home directory. Checks $HOME then $USERPROFILE (Windows).
 fn dirs_home() -> std::path::PathBuf {
     std::env::var("HOME")
@@ -530,23 +477,12 @@ fn main() {
                 history::handle_history();
             }
             return;
-        } else if args[1] == "realtime" {
-            if args.len() >= 3 && args[2] == "run" {
-                let _ = realtime::run_renderer_loop();
-                return;
-            }
-            if args.len() >= 3 && args[2] == "shutdown" {
-                let _ = realtime::emit_lifecycle_event("shutdown");
-                return;
-            }
         } else if args[1] == "hook" && args.len() >= 3 {
             if args[2] == "start" {
                 history::handle_hook_start();
-                let _ = realtime::emit_lifecycle_event("session_start");
                 return;
             } else if args[2] == "end" {
                 history::handle_hook_end();
-                let _ = realtime::emit_lifecycle_event("session_end");
                 return;
             }
         }
@@ -562,7 +498,6 @@ fn main() {
         Ok(s) => s,
         Err(_) => return,
     };
-    let _ = realtime::emit_state_update(&input);
     if let Some(out) = render(&input) {
         print!("{}", out);
     }
@@ -596,9 +531,6 @@ fn render(input: &str) -> Option<String> {
     let abs_dir = std::fs::canonicalize(&dir)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| dir.clone());
-
-    // Todos
-    let (task, active_agents) = scan_todos(&claude_dir, &session);
 
     // Cost / rate limits
     // is_subscription = rate_limits key exists (even if null/empty object)
@@ -684,19 +616,9 @@ fn render(input: &str) -> Option<String> {
         line2_chunks.push(token_display);
     }
 
-    // Agent display
-    let agent_display = if active_agents > 0 {
-        format!(" \x1b[0m\x1b[36m↪ {}\x1b[0m", active_agents)
-    } else {
-        String::new()
-    };
-
-    let model_display = format!("\x1b[0m\x1b[94m{}\x1b[0m{}{}", model, effort_sfx, agent_display);
+    let model_display = format!("\x1b[0m\x1b[94m{}\x1b[0m{}", model, effort_sfx);
 
     let mut line1_chunks = vec![model_display];
-    if !task.is_empty() {
-        line1_chunks.push(format!("\x1b[1m{}\x1b[0m", task));
-    }
     line1_chunks.push(format!("{}{}", dir_display, ctx));
 
     let columns = terminal_columns();
@@ -723,7 +645,3 @@ fn render(input: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "../tests/rust_unit/main_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "../tests/rust_unit/realtime_tests.rs"]
-mod realtime_tests;

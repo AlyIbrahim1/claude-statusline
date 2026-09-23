@@ -21,12 +21,12 @@ Two independent halves that never call each other, sharing only the settings pat
 
 **History module** (`src/history.rs`): handles `hook start`, `hook end`, and `history` subcommands for the Rust binary. Stores sessions as append-only JSONL at `~/.claude/statusline-history.jsonl`. The JS fallback (`scripts/history.js`) uses the same file and format — both implementations share one history store.
 
-**Realtime modules** (`src/realtime.rs`, `src/realtime_paths.rs`, `src/status_model.rs`): optional background renderer (enabled via `CLAUDE_STATUSLINE_REALTIME=1`). `realtime.rs` manages Unix socket IPC, lifecycle events, and terminal resize handling. `realtime_paths.rs` derives TTY slugs and resolves per-terminal file paths. `status_model.rs` parses stdin JSON into a typed struct. All realtime spawn code is guarded with `#[cfg(all(unix, not(test)))]` to prevent test spawn loops.
+**Input model** (`src/status_model.rs`): parses stdin JSON into a typed struct.
 
 **Runtime half** (`statusline.js`): invoked by Claude Code at runtime. Reads JSON from stdin, renders a 2-line ANSI statusline to stdout. Has a 3-second timeout guard on stdin. Silently discards JSON parse errors — must never crash Claude Code.
 
 **Lifecycle half** (`scripts/`): runs at install/uninstall time and via the CLI.
-- `scripts/config.js` — `getSettingsPath()` (respects `$CLAUDE_CONFIG_DIR`), `atomicWrite()` (write to `.tmp` then rename), `resolveBinary()` (searches optionalDependency packages for a platform binary, returns path or null), `getRealtimePaths()` / `getRealtimeTtySlug()` (realtime state file paths per terminal)
+- `scripts/config.js` — `getSettingsPath()` (respects `$CLAUDE_CONFIG_DIR`), `atomicWrite()` (write to `.tmp` then rename), `resolveBinary()` (searches optionalDependency packages for a platform binary, returns path or null)
 - `scripts/setup.js` — adds/updates the `statusLine` key in settings.json, preserves all other keys, validates paths for unsafe shell chars
 - `scripts/uninstall.js` — removes the `statusLine` key, preserves other settings
 - `scripts/plugin-autosetup.js` — exports `pluginAutoSetup()`, called by postinstall when `CLAUDE_PLUGIN_ROOT` is set; configures `statusLine` in settings.json using the binary (preferred) or JS fallback
@@ -73,9 +73,9 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 
 ## Tests
 
-154 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
+140 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
-108 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (77), `history_tests.rs` (9), `history_tui_tests.rs` (5), `realtime_tests.rs` (17). Run with `cargo test -- --test-threads=1`.
+83 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (69), `history_tests.rs` (9), `history_tui_tests.rs` (5). Run with `cargo test -- --test-threads=1`.
 
 ## Commits
 

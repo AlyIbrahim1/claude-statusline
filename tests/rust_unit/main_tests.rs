@@ -244,100 +244,6 @@ fn dir_label_unrelated_path() {
     assert_eq!(dir_label(abs, home), "~/foo/bar");
 }
 
-fn write_todo_file(dir: &std::path::Path, name: &str, todos: &serde_json::Value) {
-    std::fs::write(dir.join(name), serde_json::to_string(todos).unwrap()).unwrap();
-}
-
-#[test]
-fn scan_todos_finds_active_task() {
-    let tmp = std::env::temp_dir().join(format!("sl_test_{}", std::process::id()));
-    let todos_dir = tmp.join("todos");
-    std::fs::create_dir_all(&todos_dir).unwrap();
-    let session = "sess123";
-    write_todo_file(&todos_dir, "sess123-agent-1.json", &serde_json::json!([
-        {"status": "in_progress", "activeForm": "Writing tests"}
-    ]));
-    let (task, agents) = scan_todos(&tmp, session);
-    assert_eq!(task, "Writing tests");
-    assert_eq!(agents, 1);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn scan_todos_ignores_non_agent_files() {
-    let tmp = std::env::temp_dir().join(format!("sl_test2_{}", std::process::id()));
-    let todos_dir = tmp.join("todos");
-    std::fs::create_dir_all(&todos_dir).unwrap();
-    write_todo_file(&todos_dir, "sess123-other.json", &serde_json::json!([
-        {"status": "in_progress", "activeForm": "Should not appear"}
-    ]));
-    let (task, agents) = scan_todos(&tmp, "sess123");
-    assert_eq!(task, "");
-    assert_eq!(agents, 0);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn scan_todos_counts_multiple_agents() {
-    let tmp = std::env::temp_dir().join(format!("sl_test3_{}", std::process::id()));
-    let todos_dir = tmp.join("todos");
-    std::fs::create_dir_all(&todos_dir).unwrap();
-    let session = "abc";
-    write_todo_file(&todos_dir, "abc-agent-1.json", &serde_json::json!([
-        {"status": "in_progress", "activeForm": "First task"}
-    ]));
-    // Sleep to ensure distinct mtime so sort order is deterministic (newest = agent-2)
-    std::thread::sleep(std::time::Duration::from_millis(15));
-    write_todo_file(&todos_dir, "abc-agent-2.json", &serde_json::json!([
-        {"status": "in_progress", "activeForm": "Second task"}
-    ]));
-    let (task, agents) = scan_todos(&tmp, session);
-    assert_eq!(agents, 2);
-    assert_eq!(task, "Second task");
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn scan_todos_returns_empty_when_no_in_progress() {
-    let tmp = std::env::temp_dir().join(format!("sl_test4_{}", std::process::id()));
-    let todos_dir = tmp.join("todos");
-    std::fs::create_dir_all(&todos_dir).unwrap();
-    write_todo_file(&todos_dir, "sess-agent-1.json", &serde_json::json!([
-        {"status": "completed", "activeForm": "Done"}
-    ]));
-    let (task, agents) = scan_todos(&tmp, "sess");
-    assert_eq!(task, "");
-    assert_eq!(agents, 0);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn scan_todos_ignores_malformed_json_files() {
-    let tmp = std::env::temp_dir().join(format!("sl_test_malformed_todos_{}", std::process::id()));
-    let todos_dir = tmp.join("todos");
-    std::fs::create_dir_all(&todos_dir).unwrap();
-    let session = "sessbad";
-
-    std::fs::write(todos_dir.join("sessbad-agent-1.json"), "{ bad json").unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(15));
-    write_todo_file(&todos_dir, "sessbad-agent-2.json", &serde_json::json!([
-        {"status": "in_progress", "activeForm": "Valid task"}
-    ]));
-
-    let (task, agents) = scan_todos(&tmp, session);
-    assert_eq!(task, "Valid task");
-    assert_eq!(agents, 1);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
-fn scan_todos_empty_session_returns_empty() {
-    let tmp = std::env::temp_dir().join(format!("sl_test5_{}", std::process::id()));
-    let (task, agents) = scan_todos(&tmp, "");
-    assert_eq!(task, "");
-    assert_eq!(agents, 0);
-}
-
 #[test]
 fn read_session_tokens_missing_file_returns_none() {
     let tmp = std::env::temp_dir().join(format!("sl_tok_test_{}", std::process::id()));
@@ -699,18 +605,6 @@ fn sanitize_non_matching_terminator_preserves_remainder() {
 }
 
 #[test]
-fn scan_todos_missing_todos_dir_returns_empty() {
-    // If todos/ does not exist, scan_todos should return ("", 0) — not crash.
-    let tmp = std::env::temp_dir().join(format!("sl_no_todos_{}", std::process::id()));
-    std::fs::create_dir_all(&tmp).unwrap();
-    // Do NOT create tmp/todos/
-    let (task, agents) = scan_todos(&tmp, "some-session");
-    assert_eq!(task, "");
-    assert_eq!(agents, 0);
-    std::fs::remove_dir_all(&tmp).ok();
-}
-
-#[test]
 fn truncate_visible_no_ellipsis_when_exactly_at_max() {
     let s = "hello"; // visible_len = 5
     let out = truncate_visible(s, 5);
@@ -729,33 +623,6 @@ fn wrap_chunks_single_chunk_never_split() {
     let lines = wrap_chunks(chunks, Some(5), " | ");
     // A single chunk is never split, even when wider than max_width.
     assert_eq!(lines.len(), 1);
-}
-
-#[test]
-fn render_shows_agent_indicator_when_active() {
-    let tmp = std::env::temp_dir().join(format!("sl_agents_render_{}", std::process::id()));
-    let todos_dir = tmp.join("todos");
-    std::fs::create_dir_all(&todos_dir).unwrap();
-    let session = "agentsess";
-    std::fs::write(
-        todos_dir.join(format!("{}-agent-1.json", session)),
-        r#"[{"status":"in_progress","activeForm":"Deploy"}]"#,
-    ).unwrap();
-
-    std::env::set_var("CLAUDE_CONFIG_DIR", &tmp);
-    let input = serde_json::json!({
-        "model": {"display_name": "M"},
-        "workspace": {"current_dir": "/tmp/myproject"},
-        "session_id": session,
-        "context_window": {"remaining_percentage": 90.0}
-    }).to_string();
-
-    let out = render(&input).unwrap();
-    std::env::remove_var("CLAUDE_CONFIG_DIR");
-    std::fs::remove_dir_all(&tmp).ok();
-
-    assert!(out.contains("↪"), "expected agent indicator ↪ in output");
-    assert!(out.contains('1'), "expected agent count 1 in output");
 }
 
 #[test]

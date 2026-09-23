@@ -49,7 +49,7 @@ claude-statusline setup
 
 </div>
 
-**Line 1** — Model name · Effort level · Active subagents · Current task · Directory `(branch +commits)` · Context bar
+**Line 1** — Model name · Effort level · Directory `(branch +commits)` · Context bar
 
 **Line 2** — Weekly token usage · 5h usage · Reset countdown *(Pro/Max)* — or — Session cost *(API key)* · Session tokens `X↓ Y↑`
 
@@ -59,7 +59,6 @@ claude-statusline setup
 | Rate limits | Shows 5h and weekly usage with color-coded thresholds |
 | Session cost | Displayed only for API key users, hidden for subscribers |
 | Session tokens | Real-time via JSONL offset caching — split input/output display (`X↓ Y↑`), formatted as `k` or `M` for large counts |
-| Active agents | Counts running subagents from your `~/.claude/todos/` directory |
 | Effort level | Reads `CLAUDE_CODE_EFFORT_LEVEL` env var or `settings.json` |
 | Git branch | Detected automatically, silently absent if not a git repo |
 | Session commits | Shows `+N` next to the branch for commits made during the current session |
@@ -163,43 +162,6 @@ Rows are color-coded by exit reason: green = normal, yellow = interrupted, orang
 
 <div align="center">
 
-## Realtime Renderer
-
-</div>
-
-An optional background process that maintains a persistent Unix socket per terminal, enabling terminal-resize awareness and faster state access. **Disabled by default.**
-
-**Enable** by setting the environment variable (add to your shell profile to persist):
-
-```bash
-export CLAUDE_STATUSLINE_REALTIME=1
-```
-
-Accepted values: `1`, `true`, `TRUE`.
-
-When enabled, the native binary auto-spawns a renderer process the first time it runs in a terminal session. The renderer listens on a Unix socket and persists state to `~/.claude/statusline-state-{tty}.json`. It exits automatically on `session_end` or when explicitly stopped.
-
-**Terminal identification**
-
-Each terminal gets its own renderer, identified by a *TTY slug* derived in priority order from:
-
-1. `CLAUDE_STATUSLINE_TTY` — set this explicitly for a stable, human-readable slug
-2. `TERM_SESSION_ID` — used automatically by terminal emulators that set it
-3. `pid-{PID}` — fallback, changes on each shell restart
-
-**Commands:**
-
-```bash
-claude-statusline realtime-status   # Show renderer state and paths for current terminal
-claude-statusline realtime-stop     # Request renderer shutdown for current terminal
-```
-
-> The realtime renderer is Unix-only. On Windows, the feature flag is silently ignored.
-
----
-
-<div align="center">
-
 ## Platform support
 
 </div>
@@ -225,7 +187,6 @@ See [PLATFORMS.md](PLATFORMS.md) for the full compatibility guide, per-platform 
 | API calls | None — reads Claude's stdin directly | Poll OAuth endpoint, risk rate limits |
 | Subscription-aware | Shows usage/resets for Pro/Max, cost for API | Treat everyone as API user |
 | Context bar | Usable % after auto-compact buffer | Raw remaining % |
-| Subagent counter | Counts active agents from todos dir | — |
 | Session tokens | Real-time via JSONL offset cache, split I/O (`X↓ Y↑`) | Stale stdin snapshot or none |
 | Session commits | Tracks git commits made this session | — |
 | Session history | Terminal TUI + browser dashboard, per-project filtering, zero dependencies | — |

@@ -18,34 +18,6 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function sanitizeSlug(s) {
-  return String(s || '')
-    .replace(/[^a-zA-Z0-9_-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-function getRealtimeTtySlug() {
-  const preferred = [process.env.CLAUDE_STATUSLINE_TTY, process.env.TERM_SESSION_ID];
-  for (const raw of preferred) {
-    const slug = sanitizeSlug(raw || '');
-    if (slug) return slug;
-  }
-  return sanitizeSlug(`pid-${process.pid}`);
-}
-
-function getRealtimePaths() {
-  const claudeDir = getClaudeConfigDir();
-  const ttySlug = getRealtimeTtySlug();
-  return {
-    claudeDir,
-    ttySlug,
-    registryPath: path.join(claudeDir, `statusline-renderer-${ttySlug}.json`),
-    statePath: path.join(claudeDir, `statusline-state-${ttySlug}.json`),
-    socketPath: path.join(claudeDir, `statusline-rt-${ttySlug}.sock`),
-  };
-}
-
 function getSettingsPath() {
   const base = getClaudeConfigDir();
   return path.join(base, 'settings.json');
@@ -88,6 +60,4 @@ module.exports = {
   getHomeDir,
   getClaudeConfigDir,
   isPlainObject,
-  getRealtimeTtySlug,
-  getRealtimePaths,
 };
