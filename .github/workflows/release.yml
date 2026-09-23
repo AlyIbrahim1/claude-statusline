@@ -13,13 +13,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.client_payload.sha }}
+      # musl: a static binary with no glibc version requirement (runs on Alpine and older distros)
       - name: Add target
-        run: rustup target add x86_64-unknown-linux-gnu
+        run: rustup target add x86_64-unknown-linux-musl
       - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: cargo build --release --target x86_64-unknown-linux-musl
       - name: Copy binary and set version
         run: |
-          cp target/x86_64-unknown-linux-gnu/release/statusline packages/linux-x64/statusline
+          cp target/x86_64-unknown-linux-musl/release/statusline packages/linux-x64/statusline
           VERSION=${RELEASE_TAG#v}
           cd packages/linux-x64 && npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4
@@ -46,12 +47,12 @@ jobs:
         with:
           ref: ${{ github.event.client_payload.sha }}
       - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --locked --version 0.2.5
       - name: Build
-        run: cross build --release --target aarch64-unknown-linux-gnu
+        run: cross build --release --target aarch64-unknown-linux-musl
       - name: Copy binary and set version
         run: |
-          cp target/aarch64-unknown-linux-gnu/release/statusline packages/linux-arm64/statusline
+          cp target/aarch64-unknown-linux-musl/release/statusline packages/linux-arm64/statusline
           VERSION=${RELEASE_TAG#v}
           cd packages/linux-arm64 && npm version $VERSION --no-git-tag-version --allow-same-version
       - uses: actions/setup-node@v4

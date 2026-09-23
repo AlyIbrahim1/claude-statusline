@@ -34,7 +34,7 @@ The correct binary package is selected automatically by npm at install time base
 
 </div>
 
-Covers all x64 and arm64 distributions: **Ubuntu, Debian, Arch Linux, Fedora, RHEL, Alpine, openSUSE, Manjaro, Pop!_OS**, and others. The binary is a statically-linked ELF with no libc or distro-specific runtime dependencies.
+Covers all x64 and arm64 distributions: **Ubuntu, Debian, Arch Linux, Fedora, RHEL, Alpine, openSUSE, Manjaro, Pop!_OS**, and others. The binary is a statically-linked ELF (built for the `*-unknown-linux-musl` targets) with no glibc version requirement or other distro-specific runtime dependencies.
 
 **Install:**
 
