@@ -3,18 +3,15 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await page.goto('http://localhost:8080/dashboard.html');
 
-  // Wait until the sample history.js has loaded and the table is rendered
+  // Wait until the sample history.js has loaded and the session rows are rendered
   await page.waitForLoadState('networkidle');
-  await page.waitForSelector('#tableBody tr');
+  await page.waitForSelector('.row');
 
-  // Wait for all CSS animations (fadeUp on cards + table section) to finish
-  await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished)));
-
-  await page.screenshot({ path: '.github/assets/dashboard-preview.png', fullPage: true });
+  await page.screenshot({ path: '.github/assets/dashboard-preview.png' });
 
   await browser.close();
 })();

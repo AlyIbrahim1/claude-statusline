@@ -1,4 +1,9 @@
-h(["00000000","claude-statusline","claude-3-5-sonnet-20241022",1730342448,14,8890,71120,412,0.03,"prompt_input_exit"]);
-h(["00000001","claude-statusline","claude-3-5-sonnet-20241022",1730341512,120,12450,99600,1024,0.05,"clear"]);
-h(["00000002","rust-proxy","claude-3-haiku-20240307",1730286600,10,4120,32960,156,0.002,"prompt_input_exit"]);
-h(["00000003","my-next-app","claude-3-opus-20240229",1730275532,450,35000,280000,4200,0.85,"resume"]);
+h(["a1f3c9e2","claude-statusline","Opus 4.7",1790152800,2710,184200,1920000,21400,3.1812,"prompt_input_exit"]);
+h(["b72d0e41","claude-statusline","Sonnet 4.6",1790139600,940,52300,610000,8800,0.7421,"clear"]);
+h(["c09a5b17","rust-proxy","Haiku 4.5",1790121000,185,8120,41000,1260,0.0214,"prompt_input_exit"]);
+h(["d4e8f302","my-next-app","Sonnet 4.6",1789980000,3620,96400,1210000,15300,1.4870,"resume"]);
+h(["e5b1a7c8","my-next-app","Opus 4.7",1789720000,1250,41800,380000,6100,0.9932,"logout"]);
+h(["f6c2b9d0","rust-proxy","Sonnet 4.6",1788900000,48,2100,0,320,0.0110,"other"]);
+h(["07d3cae1","claude-statusline","Sonnet 4.6",1787200000,5400,210500,2640000,30100,2.8403,"prompt_input_exit"]);
+h(["18e4dbf2","docs-site","Haiku 4.5",1782000000,610,15400,98000,2900,0.0381,"clear"]);
+h(["29f5ec03","my-next-app","Opus 4.7",1770000000,7200,305000,4100000,44800,6.1275,"prompt_input_exit"]);
