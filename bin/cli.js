@@ -14,7 +14,7 @@ Commands:
   setup            Configure ~/.claude/settings.json to use this statusline
   uninstall        Remove this statusline from ~/.claude/settings.json and delete its data
   download-binary  Download the native binary for this platform
-  enable-history   Enable tracking session analytics to JSONL (default on setup)
+  enable-history   Record each finished session for the history dashboard (default on setup)
   disable-history  Remove history tracking hooks from Claude settings
   history          Open the session analytics dashboard
                    --mode web|terminal (persist dashboard mode preference)

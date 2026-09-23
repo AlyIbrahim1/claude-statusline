@@ -52,7 +52,7 @@ If your change touches history slash commands:
 
 - Source slash command files live in `.claude/commands/`.
 - `scripts/postinstall.js` copies those files into `~/.claude/commands/` during global install. When `CLAUDE_PLUGIN_ROOT` is set, postinstall instead calls `pluginAutoSetup()` (from `scripts/plugin-autosetup.js`) and exits early, skipping the normal global setup path.
-- `scripts/preuninstall.js` removes only package-owned history command files and must not remove unrelated user commands.
+- `uninstall()` in `scripts/uninstall.js` (used by `claude-statusline uninstall` and `scripts/preuninstall.js`) removes only package-owned history command files and must not remove unrelated user commands. npm 7+ never runs `preuninstall`.
 - Add or update tests in `tests/slash-commands.test.js` for lifecycle behavior changes.
 
 If your change touches history dashboard mode behavior:

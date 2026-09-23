@@ -223,9 +223,7 @@ claude-statusline uninstall
 npm uninstall -g @alyibrahim/claude-statusline
 ```
 
-> Always run `claude-statusline uninstall` first — it removes the `statusLine` entry and hooks from `~/.claude/settings.json` and deletes `~/.claude/statusline/` (history included) before the package files are removed.
-
-`npm uninstall -g @alyibrahim/claude-statusline` also removes the four history slash command files installed by this package from `~/.claude/commands/`, without touching other custom commands.
+> Always run `claude-statusline uninstall` first. It removes the `statusLine` entry, the history hook and the dashboard mode from `~/.claude/settings.json`, deletes the four history slash commands from `~/.claude/commands/` (other commands are untouched), and deletes `~/.claude/statusline/` (history included). npm 7 and later do not run uninstall scripts, so `npm uninstall -g` on its own leaves `settings.json` pointing at a statusline that no longer exists.
 
 ---
 

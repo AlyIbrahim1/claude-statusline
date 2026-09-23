@@ -30,6 +30,16 @@ describe('uninstall()', () => {
     expect(load()()).toEqual({ ok: true });
   });
 
+  test('removes our slash commands (and dashboardMode with removeData), keeps the user\'s own', () => {
+    const commands = path.join(tmpDir, 'commands');
+    fs.mkdirSync(commands);
+    for (const f of ['history.md', 'history-mode.md', 'mine.md']) fs.writeFileSync(path.join(commands, f), 'x');
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify({ model: 'sonnet', dashboardMode: 'terminal' }));
+    expect(load()({ removeData: true }).ok).toBe(true);
+    expect(fs.readdirSync(commands)).toEqual(['mine.md']);
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8'))).toEqual({ model: 'sonnet' });
+  });
+
   test('removes statusLine and preserves other keys', () => {
     const settingsPath = path.join(tmpDir, 'settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify({

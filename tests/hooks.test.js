@@ -24,6 +24,16 @@ describe('postinstall.js', () => {
     expect(result.status).toBe(0);
   });
 
+  test('warns (and leaves settings alone) when settings.json is invalid', () => {
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), '{ broken');
+    const result = spawnSync(process.execPath, [POSTINSTALL], {
+      env: { ...process.env, CLAUDE_CONFIG_DIR: tmpDir, npm_config_global: 'true' }
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr.toString()).toContain('claude-statusline setup');
+    expect(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf8')).toBe('{ broken');
+  });
+
   test('exits 0 silently for non-global install', () => {
     const result = spawnSync(process.execPath, [POSTINSTALL], {
       env: { ...process.env, CLAUDE_CONFIG_DIR: tmpDir, npm_config_global: 'false' }
