@@ -30,7 +30,7 @@ function statePath(claudeDir, session) {
 }
 
 function emptyState() {
-  return { files: {}, tin: 0, tcache: 0, tout: 0, git: {}, start: 0, model: '', project: '', cost: 0, dur: 0 };
+  return { files: {}, tin: 0, tcache: 0, tout: 0, git: {}, start: 0, model: '', project: '', cost: 0, dur: 0, title: '' };
 }
 
 const nowSecs = () => Math.floor(Date.now() / 1000);
@@ -63,10 +63,17 @@ function save(file, state) {
 }
 
 function countLine(line, cursor, state) {
-  // Cheap pre-filter: most lines are large tool results that never carry usage.
-  if (!line.includes('"usage"') || !line.includes('"assistant"')) return;
+  // Cheap pre-filter: most lines are large tool results that carry neither usage nor a title.
+  const maybeTitle = line.includes('"ai-title"');
+  if (!maybeTitle && (!line.includes('"usage"') || !line.includes('"assistant"'))) return;
   let entry;
   try { entry = JSON.parse(line); } catch (e) { return; }
+  // Claude Code rewrites the title as the session goes on; the last one wins.
+  if (maybeTitle && entry && entry.type === 'ai-title') {
+    // Shown in a terminal by `history --terminal`: no escape sequences or line breaks.
+    if (typeof entry.aiTitle === 'string') state.title = entry.aiTitle.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+    return;
+  }
   const usage = entry && entry.type === 'assistant' && entry.message && entry.message.usage;
   if (!usage || typeof usage !== 'object') return;
   // Claude Code writes one line per content block, each repeating the same usage; repeats are adjacent.

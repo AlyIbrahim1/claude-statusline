@@ -125,6 +125,25 @@ fn update_tokens_includes_subagent_transcripts() {
 }
 
 #[test]
+fn update_tokens_keeps_the_latest_title_without_control_chars() {
+    let d = tmp_dir("title");
+    let t = d.join("s.jsonl");
+    let text = [
+        "{\"type\":\"ai-title\",\"aiTitle\":\"First guess\",\"sessionId\":\"s\"}\n".to_string(),
+        // An assistant message that merely mentions ai-title still counts its usage.
+        assistant("m1", "r1", 10, 5, 0, 0).replace("\"type\":\"assistant\"", "\"note\":\"ai-title\",\"type\":\"assistant\""),
+        "{\"type\":\"ai-title\",\"aiTitle\":\"Fix\\u001b[31m the\\nbug\\u009b\",\"sessionId\":\"s\"}\n".to_string(),
+    ]
+    .concat();
+    fs::write(&t, text).unwrap();
+    let mut st = State::default();
+    update_tokens(&mut st, &t);
+    assert_eq!(st.title, "Fix[31m thebug");
+    assert_eq!((st.tin, st.tout), (10, 5));
+    fs::remove_dir_all(&d).ok();
+}
+
+#[test]
 fn update_tokens_missing_transcript_records_nothing() {
     let d = tmp_dir("missing");
     let mut st = State::default();

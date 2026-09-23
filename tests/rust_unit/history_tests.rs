@@ -27,10 +27,21 @@ fn test_parse_datetime_roundtrip() {
 #[test]
 fn line_round_trips_and_is_compact() {
     let line = record_line("3f9a2c1b-aaaa-bbbb", &state(100, 50), "clear", 0);
-    assert_eq!(line, "h([\"3f9a2c1b\",\"proj\",\"Opus 5.5\",1700000000,90,100,0,50,1.2346,\"clear\"]);\n");
+    assert_eq!(line, "h([\"3f9a2c1b\",\"proj\",\"Opus 5.5\",1700000000,90,100,0,50,1.2346,\"clear\",\"\"]);\n");
     let rec = parse_line(&line).unwrap();
     assert_eq!((rec.id.as_str(), rec.tokens_in, rec.tokens_out, rec.duration_seconds), ("3f9a2c1b", 100, 50, 90));
     assert_eq!(rec.start_time, "2023-11-14 22:13:20");
+}
+
+#[test]
+fn line_carries_the_title_and_old_lines_parse_without_one() {
+    let mut st = state(1, 1);
+    st.title = "Fix \"login\" bug".into();
+    let line = record_line("x", &st, "clear", 0);
+    assert!(line.ends_with(",\"clear\",\"Fix \\\"login\\\" bug\"]);\n"), "{line}");
+    assert_eq!(parse_line(&line).unwrap().title, st.title);
+    let old = parse_line("h([\"x\",\"p\",\"m\",1,2,3,0,4,0,\"clear\"]);").unwrap();
+    assert_eq!((old.exit_reason.as_str(), old.title.as_str()), ("clear", ""));
 }
 
 #[test]
@@ -101,7 +112,7 @@ fn finalize_without_state_file_writes_nothing() {
 #[test]
 fn whole_number_cost_is_written_like_json_stringify() {
     let st = State { cost: 0.0, ..state(1, 1) };
-    assert!(record_line("x", &st, "clear", 0).contains(",1,0,1,0,\"clear\"]"));
+    assert!(record_line("x", &st, "clear", 0).contains(",1,0,1,0,\"clear\","));
 }
 
 #[test]

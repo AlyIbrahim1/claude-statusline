@@ -134,14 +134,14 @@ Plugin installs include them via the plugin's `commands/` directory.
 │ Filter: [All Projects ▾]                                                 │
 └──────────────────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  Project              Model               Started          Dur   Tok   Cost│
-│                                                                           │
-│> my-web-app           claude-sonnet-4-6   2026-04-02 14:  32m   842k  $2.14│
-│  cli-tool             claude-opus-4-6     2026-04-01 09:  1h4m  1.2M  $5.60│
-│  data-pipeline        claude-haiku-4-5    2026-03-31 17:  18m   220k  $0.44│
-│  my-web-app           claude-sonnet-4-6   2026-03-30 11:  45m   990k  $2.89│
-│  api-server           claude-sonnet-4-6   2026-03-29 08:  2h1m  2.1M  $8.33│
-│                                                                           │
+│  Title             Project       Model      Started      Dur   Tok   Cost│
+│                                                                          │
+│> Fix login bug     my-web-app    sonnet-4-6 04-02 14:10  32m  842k  $2.14│
+│  Add CSV export    cli-tool      opus-4-6   04-01 09:02 1h4m  1.2M  $5.60│
+│  Speed up ingest   data-pipeline haiku-4-5  03-31 17:45  18m  220k  $0.44│
+│  Dark mode toggle  my-web-app    sonnet-4-6 03-30 11:20  45m  990k  $2.89│
+│  Rate limiting     api-server    sonnet-4-6 03-29 08:05 2h1m  2.1M  $8.33│
+│                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ up/down or j/k: move   f: filter   Enter: apply   Esc: close   q: quit   │
@@ -164,7 +164,7 @@ Rows are color-coded by exit reason: green = normal, yellow = interrupted, orang
 
 ### Web Dashboard
 
-`--mode web` (the default) opens `~/.claude/statusline/dashboard.html` in your browser, with project filtering and a light/dark theme toggle. The page reads `history.js` from its own folder and refreshes itself, so you can leave it open and new sessions appear as they finish. It makes no network requests.
+`--mode web` (the default) opens `~/.claude/statusline/dashboard.html` in your browser, with each session's title, project filtering, time frames, search and a light/dark theme toggle. The page reads `history.js` from its own folder and refreshes itself, so you can leave it open and new sessions appear as they finish. It makes no network requests.
 
 ---
 

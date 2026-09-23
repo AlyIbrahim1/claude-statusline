@@ -18,9 +18,25 @@ describe('history store', () => {
 
   test('record line is compact, round-trips, and matches the Rust format', () => {
     const line = history.recordLine('3f9a2c1b-aaaa-bbbb', state(100, 50), 'clear', 0);
-    expect(line).toBe('h(["3f9a2c1b","proj","Opus 5.5",1700000000,90,100,0,50,1.2346,"clear"]);\n');
+    expect(line).toBe('h(["3f9a2c1b","proj","Opus 5.5",1700000000,90,100,0,50,1.2346,"clear",""]);\n');
     const rec = history.parseLine(line);
     expect(rec).toMatchObject({ id: '3f9a2c1b', tokens_in: 100, tokens_out: 50, start_time: '2023-11-14 22:13:20' });
+  });
+
+  test('finalize records the latest transcript title, without control characters', () => {
+    const transcript = path.join(tmp, 't.jsonl');
+    const lines = [
+      { type: 'ai-title', aiTitle: 'First guess', sessionId: 's' },
+      // An assistant message that merely mentions ai-title still counts its usage.
+      { note: 'ai-title', type: 'assistant', message: { id: 'm', usage: { input_tokens: 3, output_tokens: 2 } } },
+      { type: 'ai-title', aiTitle: 'Fix\u001b[31m the\nbug\u009b', sessionId: 's' },
+    ];
+    fs.writeFileSync(transcript, lines.map(l => `${JSON.stringify(l)}\n`).join(''));
+    session.save(session.statePath(tmp, 'titled'), state(0, 0));
+    history.finalize(tmp, 'titled', transcript, 'clear', 1);
+    const text = fs.readFileSync(history.historyPath(tmp), 'utf8');
+    expect(text).toBe('h(["titled","proj","Opus 5.5",1700000000,90,3,0,2,1.2346,"clear","Fix[31m thebug"]);\n');
+    expect(history.parseLine('h(["x","p","m",1,2,3,0,4,0,"clear"]);').title).toBe('');
   });
 
   test('hostile project names stay inside the JSON string', () => {
@@ -29,7 +45,7 @@ describe('history store', () => {
   });
 
   test('whole-number cost is written as an integer, like the Rust side', () => {
-    expect(history.recordLine('x', state(1, 1, { cost: 0 }), 'clear', 0)).toContain(',1,0,1,0,"clear"]');
+    expect(history.recordLine('x', state(1, 1, { cost: 0 }), 'clear', 0)).toContain(',1,0,1,0,"clear",');
   });
 
   test('a second SessionEnd for the same session does not overwrite the record', () => {

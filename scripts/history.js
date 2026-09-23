@@ -1,6 +1,6 @@
 'use strict';
 // Session history: one line per finished session in <claude_dir>/statusline/history.js.
-// Each line is `h([id,project,model,start,dur,in,cache,out,cost,reason]);` — valid JSON inside
+// Each line is `h([id,project,model,start,dur,in,cache,out,cost,reason,title]);` — valid JSON inside
 // a JS call, so the dashboard page can load the file directly with <script src>.
 // The file is only ever appended to. Readers keep the last line per id, so a resumed session
 // (or one finalized early by the stale sweep) is never counted twice. Mirrors src/history.rs.
@@ -16,9 +16,9 @@ const STALE_SECS = 24 * 60 * 60;
 const historyPath = claudeDir => path.join(claudeDir, 'statusline', 'history.js');
 const toUtcString = secs => new Date(secs * 1000).toISOString().replace('T', ' ').slice(0, 19);
 
-function formatLine(id, project, model, start, dur, tin, tcache, tout, cost, reason) {
+function formatLine(id, project, model, start, dur, tin, tcache, tout, cost, reason, title) {
   const row = [String(id).slice(0, 8), project, model, start, dur, tin, tcache, tout,
-    Math.round(cost * 10000) / 10000, reason];
+    Math.round(cost * 10000) / 10000, reason, title];
   return `h(${JSON.stringify(row)});\n`;
 }
 
@@ -33,7 +33,7 @@ function parseLine(line) {
   return {
     id: s(0), project_name: s(1), model: s(2), start: n(3), start_time: toUtcString(n(3)),
     duration_seconds: n(4), tokens_in: n(5), tokens_cache: n(6), tokens_out: n(7),
-    cost_usd: typeof v[8] === 'number' ? v[8] : 0, exit_reason: s(9),
+    cost_usd: typeof v[8] === 'number' ? v[8] : 0, exit_reason: s(9), title: s(10),
   };
 }
 
@@ -65,7 +65,7 @@ function recordLine(id, state, reason, now) {
   const start = state.start || now;
   const dur = state.dur > 0 ? state.dur : Math.max(0, now - start);
   return formatLine(id, state.project, state.model || 'Claude', start, dur,
-    state.tin, state.tcache, state.tout, state.cost, reason);
+    state.tin, state.tcache, state.tout, state.cost, reason, state.title || '');
 }
 
 function removeState(file) {
@@ -121,7 +121,7 @@ function migrateLegacy(claudeDir, homeClaudeDir) {
       // No id: the old hook guessed session ids and often gave several sessions the same
       // one, so deduplicating would merge distinct rows.
       lines += formatLine('', v.project_name || '', v.model || 'Claude', start,
-        v.duration_seconds || 0, v.tokens_in || 0, 0, v.tokens_out || 0, v.cost_usd || 0, v.exit_reason);
+        v.duration_seconds || 0, v.tokens_in || 0, 0, v.tokens_out || 0, v.cost_usd || 0, v.exit_reason, '');
     }
     // Prepend so migrated rows sit before anything already written in the new format.
     const file = historyPath(claudeDir);

@@ -1,6 +1,6 @@
 //! Session history: one line per finished session in `<claude_dir>/statusline/history.js`.
 //!
-//! Each line is `h([id,project,model,start,dur,in,cache,out,cost,reason]);` — valid JSON inside
+//! Each line is `h([id,project,model,start,dur,in,cache,out,cost,reason,title]);` — valid JSON inside
 //! a JS call, so the dashboard page can load the file directly with `<script src>`.
 //! The file is only ever appended to. Readers keep the last line per id, so a resumed
 //! session (or one finalized early by the stale sweep) is never counted twice.
@@ -32,6 +32,8 @@ pub struct Record {
     pub tokens_out: u64,
     pub cost_usd: f64,
     pub exit_reason: String,
+    /// Empty for sessions recorded before titles were kept.
+    pub title: String,
 }
 
 pub fn history_path(claude_dir: &Path) -> PathBuf {
@@ -79,12 +81,12 @@ fn parse_datetime_to_unix_secs(s: &str) -> Option<u64> {
 }
 
 fn format_line(id: &str, project: &str, model: &str, start: u64, dur: u64,
-               tin: u64, tcache: u64, tout: u64, cost: f64, reason: &str) -> String {
+               tin: u64, tcache: u64, tout: u64, cost: f64, reason: &str, title: &str) -> String {
     let id: String = id.chars().take(8).collect();
     let cost = (cost * 10_000.0).round() / 10_000.0;
     // Whole numbers as integers ("0", not "0.0"), matching JSON.stringify in scripts/history.js.
     let cost = if cost.fract() == 0.0 { json!(cost as i64) } else { json!(cost) };
-    let row = json!([id, project, model, start, dur, tin, tcache, tout, cost, reason]);
+    let row = json!([id, project, model, start, dur, tin, tcache, tout, cost, reason, title]);
     format!("h({row});\n")
 }
 
@@ -106,6 +108,7 @@ fn parse_line(line: &str) -> Option<Record> {
         tokens_out: n(7),
         cost_usd: v.get(8).and_then(|x| x.as_f64()).unwrap_or(0.0),
         exit_reason: s(9),
+        title: s(10),
     })
 }
 
@@ -147,7 +150,7 @@ fn record_line(id: &str, state: &State, reason: &str, now: u64) -> String {
     let start = if state.start == 0 { now } else { state.start };
     let dur = if state.dur > 0 { state.dur } else { now.saturating_sub(start) };
     let model = if state.model.is_empty() { "Claude" } else { &state.model };
-    format_line(id, &state.project, model, start, dur, state.tin, state.tcache, state.tout, state.cost, reason)
+    format_line(id, &state.project, model, start, dur, state.tin, state.tcache, state.tout, state.cost, reason, &state.title)
 }
 
 fn remove_state(path: &Path) {
@@ -223,6 +226,7 @@ pub fn migrate_legacy(claude_dir: &Path, home_claude_dir: &Path) {
                 v["tokens_out"].as_u64().unwrap_or(0),
                 v["cost_usd"].as_f64().unwrap_or(0.0),
                 reason,
+                "",
             ));
         }
         // Prepend so migrated rows sit before anything already written in the new format.

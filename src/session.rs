@@ -49,6 +49,8 @@ pub struct State {
     pub cost: f64,
     /// stdin cost.total_duration_ms / 1000
     pub dur: u64,
+    /// Latest `ai-title` entry of the transcript, control characters removed.
+    pub title: String,
 }
 
 pub fn now_secs() -> u64 {
@@ -191,11 +193,20 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
 }
 
 fn count_line(line: &[u8], cursor: &mut FileCursor, state: &mut State) {
-    // Cheap pre-filter: most lines are large tool results that never carry usage.
-    if !contains(line, b"\"usage\"") || !contains(line, b"\"assistant\"") {
+    // Cheap pre-filter: most lines are large tool results that carry neither usage nor a title.
+    let maybe_title = contains(line, b"\"ai-title\"");
+    if !maybe_title && (!contains(line, b"\"usage\"") || !contains(line, b"\"assistant\"")) {
         return;
     }
     let Ok(entry) = serde_json::from_slice::<serde_json::Value>(line) else { return };
+    // Claude Code rewrites the title as the session goes on; the last one wins.
+    if maybe_title && entry["type"] == "ai-title" {
+        if let Some(title) = entry["aiTitle"].as_str() {
+            // Shown in a terminal by `history --terminal`: no escape sequences or line breaks.
+            state.title = title.chars().filter(|c| !c.is_control()).collect();
+        }
+        return;
+    }
     if entry["type"] != "assistant" {
         return;
     }

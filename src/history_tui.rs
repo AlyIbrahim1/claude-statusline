@@ -264,6 +264,7 @@ fn ui(frame: &mut Frame<'_>, app: &mut App) {
             let tokens = session.tokens_in.saturating_add(session.tokens_out);
             let row_style = exit_reason_style(session.exit_reason.as_str());
             Row::new(vec![
+                Cell::from(session.title.clone()),
                 Cell::from(session.project_name.clone()),
                 Cell::from(session.model.clone()),
                 Cell::from(format_started(session.start_time.as_str())),
@@ -279,17 +280,18 @@ fn ui(frame: &mut Frame<'_>, app: &mut App) {
     let table = Table::new(
         rows,
         [
-            Constraint::Percentage(22),
-            Constraint::Percentage(20),
-            Constraint::Percentage(18),
+            Constraint::Percentage(24),
+            Constraint::Percentage(16),
+            Constraint::Percentage(14),
+            Constraint::Percentage(14),
+            Constraint::Percentage(7),
+            Constraint::Percentage(8),
+            Constraint::Percentage(8),
             Constraint::Percentage(9),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-            Constraint::Percentage(11),
         ],
     )
     .header(
-        Row::new(vec!["Project", "Model", "Started", "Dur", "Tok", "Cache", "Cost"])
+        Row::new(vec!["Title", "Project", "Model", "Started", "Dur", "Tok", "Cache", "Cost"])
             .style(Style::default().add_modifier(Modifier::BOLD)),
     )
     .block(Block::default().borders(Borders::ALL))

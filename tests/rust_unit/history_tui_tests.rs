@@ -13,6 +13,7 @@ fn session(project: &str, start: &str, tokens_in: u64, tokens_out: u64, cost: f6
         tokens_out,
         cost_usd: cost,
         exit_reason: "clear".to_string(),
+        title: String::new(),
     }
 }
 

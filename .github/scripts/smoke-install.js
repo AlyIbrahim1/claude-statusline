@@ -104,7 +104,7 @@ impls.forEach(([label, command, hook], i) => {
     check(h.status === 0, `${label}: SessionEnd run ${n}`, `${h.stdout}\n${h.stderr}`);
   }
   const lines = fs.readFileSync(historyFile, 'utf8').trim().split('\n').filter(l => l.startsWith(`h(["${id}"`));
-  check(lines.length === 1 && lines[0].endsWith(',1500,50000,800,0.5,"prompt_input_exit"]);'),
+  check(lines.length === 1 && lines[0].endsWith(',1500,50000,800,0.5,"prompt_input_exit",""]);'),
     `${label}: history line recorded once`, lines);
   check(!fs.existsSync(stateFile), `${label}: session state removed`);
 });

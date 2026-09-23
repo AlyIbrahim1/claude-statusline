@@ -260,7 +260,7 @@ section { display: flex; flex-direction: column; gap: 12px; }
     <div class="search ctl">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
       <label for="q" class="sr-only">Search sessions</label>
-      <input id="q" type="search" placeholder="Search by reason, project or model" autocomplete="off">
+      <input id="q" type="search" placeholder="Search by title, project or model" autocomplete="off">
     </div>
     <div class="rows" id="rows"></div>
   </section>
@@ -327,7 +327,7 @@ function el(tag, className, text) {
 
 // ── Data ──
 // history.js sits next to this page: one h([...]) call per finished session,
-// [id, project, model, start, duration, tokens_in, tokens_cache, tokens_out, cost, reason].
+// [id, project, model, start, duration, tokens_in, tokens_cache, tokens_out, cost, reason, title].
 // A later line with the same id replaces an earlier one (resumed sessions).
 let rows = new Map();
 let anonymous = 0;
@@ -424,7 +424,7 @@ function render() {
   const all = [...rows.values()].map(r => ({
     project: String(r[1] || '') || 'unknown', model: String(r[2] || ''), start: Number(r[3]) || 0,
     dur: Number(r[4]) || 0, tin: Number(r[5]) || 0, tcache: Number(r[6]) || 0,
-    tout: Number(r[7]) || 0, cost: Number(r[8]) || 0, reason: String(r[9] || ''),
+    tout: Number(r[7]) || 0, cost: Number(r[8]) || 0, reason: String(r[9] || ''), title: String(r[10] || ''),
   })).sort((a, b) => b.start - a.start);
 
   // Colors follow alphabetical order, so a project keeps its color as sessions come and go.
@@ -438,7 +438,7 @@ function render() {
   const scoped = inRange.filter(s => view.project === 'all' || s.project === view.project);
   const q = view.q.trim().toLowerCase();
   const list = scoped.filter(s => !q ||
-    `${REASONS[s.reason] || s.reason} ${s.reason} ${s.project} ${s.model}`.toLowerCase().includes(q));
+    `${s.title} ${REASONS[s.reason] || s.reason} ${s.reason} ${s.project} ${s.model}`.toLowerCase().includes(q));
   const sum = (arr, key) => arr.reduce((acc, s) => acc + s[key], 0);
 
   // Sidebar projects, busiest first
@@ -507,12 +507,13 @@ function render() {
     const dot = el('span', 'dot');
     dot.style.background = color(s.project);
     proj.append(dot, document.createTextNode(s.project));
+    const sep = () => { const d = el('span', '', '·'); d.setAttribute('aria-hidden', 'true'); return d; };
     const meta = el('div', 'meta');
-    meta.append(proj, el('span', '', '·'), el('span', 'chip mono', s.model || 'unknown'),
-      el('span', '', '·'), el('span', 'mono', fmtStart(s.start)));
-    meta.children[1].setAttribute('aria-hidden', 'true');
-    meta.children[3].setAttribute('aria-hidden', 'true');
-    main.append(el('div', 'row-title', REASONS[s.reason] || s.reason || 'Ended'), meta);
+    meta.append(proj, sep(), el('span', 'chip mono', s.model || 'unknown'), sep(), el('span', 'mono', fmtStart(s.start)));
+    const reason = REASONS[s.reason] || s.reason || 'Ended';
+    // Sessions recorded before titles were kept show how they ended instead.
+    if (s.title) meta.append(sep(), el('span', '', reason));
+    main.append(el('div', 'row-title', s.title || reason), meta);
     const metrics = el('div', 'metrics');
     metrics.append(
       metric(fmtDuration(s.dur), 'duration', 'm-dur'),
