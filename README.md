@@ -104,6 +104,7 @@ Everything lives in one folder, `~/.claude/statusline/` (or `$CLAUDE_CONFIG_DIR/
 |---|---|
 | `history.js` | One compact line (~100 bytes) per finished session, append-only |
 | `sessions/<id>.json` | Working state of a running session; deleted when the session ends |
+| `dashboard.html` | The web dashboard; written once and updated only when a new version changes it |
 
 A session is written to history when it ends. State left behind by a session that never ended cleanly (crash, killed terminal) is written and removed after 24 hours. Sessions that used no tokens are not recorded. Files from older versions (`statusline-history.jsonl`, `statusline-tokcache-*`, `statusline-session-*`) are converted and removed automatically.
 
@@ -163,7 +164,7 @@ Rows are color-coded by exit reason: green = normal, yellow = interrupted, orang
 
 ### Web Dashboard
 
-`--mode web` (the default) opens a browser-based dashboard with project filtering and light/dark theme toggle.
+`--mode web` (the default) opens `~/.claude/statusline/dashboard.html` in your browser, with project filtering and a light/dark theme toggle. The page reads `history.js` from its own folder and refreshes itself, so you can leave it open and new sessions appear as they finish. It makes no network requests.
 
 ---
 

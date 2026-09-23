@@ -19,7 +19,7 @@ Two independent halves that never call each other, sharing only the settings pat
 
 **Rust binary** (`src/main.rs`): the primary renderer since v1.1.0. Pre-compiled per-platform and distributed as optional npm packages (`@alyibrahim/claude-statusline-{platform}-{arch}`). Falls back to `statusline.js` when no binary is found.
 
-**History module** (`src/history.rs`, mirrored by `scripts/history.js`): handles `hook end` and `history`. `hook start` is a no-op kept for SessionStart hooks written by older versions. At SessionEnd it catches up on the transcript, appends one line `h([id8,project,model,start,dur,in,cache,out,cost,reason]);` to `<config>/statusline/history.js`, deletes that session's state file, finalizes state files untouched for 24h, and migrates legacy files. The history file is append-only; readers keep the last line per id. Both implementations must write byte-identical lines.
+**History module** (`src/history.rs`, mirrored by `scripts/history.js`): handles `hook end` and `history`. `hook start` is a no-op kept for SessionStart hooks written by older versions. At SessionEnd it catches up on the transcript, appends one line `h([id8,project,model,start,dur,in,cache,out,cost,reason]);` to `<config>/statusline/history.js`, deletes that session's state file, finalizes state files untouched for 24h, and migrates legacy files. The history file is append-only; readers keep the last line per id. Both implementations must write byte-identical lines. `history` installs `dashboard-design/dashboard.html` (one self-contained file, embedded in the binary via `include_str!`) to `<config>/statusline/dashboard.html` when its content differs, then opens it; the page loads `history.js` via `<script src>` and must build rows with `textContent`, never `innerHTML`. `dashboard-design/history.js` is sample data for previewing the page from the repo.
 
 **Input model** (`src/status_model.rs`): parses stdin JSON into a typed struct.
 
@@ -75,9 +75,9 @@ Before tagging: bump version in both `package.json` (including the ones in `/pac
 
 ## Tests
 
-139 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
+140 Jest tests in `tests/`. Each test file uses `fs.mkdtempSync` for directory isolation and overrides `$CLAUDE_CONFIG_DIR`. Tests that cover module side effects (hooks) must clear the require cache between runs: `delete require.cache[require.resolve('../scripts/postinstall')]`. `cli-mode.test.js` covers `--mode web|terminal` flag parsing, mode persistence in settings.json, binary fallback, and binary dispatch behavior.
 
-91 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (65), `session_tests.rs` (12), `history_tests.rs` (10), `history_tui_tests.rs` (4). Run with `cargo test -- --test-threads=1`.
+93 Rust tests in `tests/rust_unit/`, referenced from source files via `#[path]`: `main_tests.rs` (65), `session_tests.rs` (12), `history_tests.rs` (12), `history_tui_tests.rs` (4). Run with `cargo test -- --test-threads=1`.
 
 ## Commits
 

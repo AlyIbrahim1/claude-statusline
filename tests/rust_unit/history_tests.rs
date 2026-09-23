@@ -143,3 +143,25 @@ fn migrate_legacy_converts_history_and_deletes_loose_files() {
     assert!(d.join("settings.json").exists());
     fs::remove_dir_all(&d).ok();
 }
+
+#[test]
+fn install_dashboard_writes_once_and_repairs_changes() {
+    let d = tmp_dir("dashboard");
+    let page = install_dashboard(&d).unwrap();
+    assert_eq!(page, d.join("statusline").join("dashboard.html"));
+    assert_eq!(fs::read_to_string(&page).unwrap(), DASHBOARD);
+    let mtime = fs::metadata(&page).unwrap().modified().unwrap();
+    install_dashboard(&d).unwrap();
+    assert_eq!(fs::metadata(&page).unwrap().modified().unwrap(), mtime, "unchanged page is not rewritten");
+    fs::write(&page, "stale").unwrap();
+    install_dashboard(&d).unwrap();
+    assert_eq!(fs::read_to_string(&page).unwrap(), DASHBOARD);
+    fs::remove_dir_all(&d).ok();
+}
+
+#[test]
+fn dashboard_loads_history_from_its_folder_without_external_requests() {
+    assert!(DASHBOARD.contains("history.js?t="));
+    assert!(!DASHBOARD.contains("googleapis"));
+    assert!(!DASHBOARD.contains("innerHTML"), "rows must be built with textContent");
+}

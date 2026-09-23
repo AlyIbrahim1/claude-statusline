@@ -123,4 +123,15 @@ describe('history store', () => {
     expect(fs.existsSync(path.join(tmp, 'statusline'))).toBe(false);
     if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev;
   });
+
+  test('installDashboard copies the single page once and repairs a changed copy', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../dashboard-design/dashboard.html'), 'utf8');
+    const page = history.installDashboard(tmp);
+    expect(page).toBe(path.join(tmp, 'statusline', 'dashboard.html'));
+    expect(fs.readFileSync(page, 'utf8')).toBe(source);
+    fs.writeFileSync(page, 'stale');
+    history.installDashboard(tmp);
+    expect(fs.readFileSync(page, 'utf8')).toBe(source);
+    expect(source).not.toMatch(/googleapis|innerHTML/);
+  });
 });

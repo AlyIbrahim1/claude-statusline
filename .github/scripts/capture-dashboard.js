@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 
   await page.goto('http://localhost:8080/dashboard.html');
 
-  // Wait until the mockData.jsonl fetch has completed and the table is rendered
+  // Wait until the sample history.js has loaded and the table is rendered
   await page.waitForLoadState('networkidle');
   await page.waitForSelector('#tableBody tr');
 

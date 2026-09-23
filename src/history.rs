@@ -269,37 +269,26 @@ pub fn handle_hook_end() {
     sweep_stale(&claude_dir, now);
 }
 
+const DASHBOARD: &str = include_str!("../dashboard-design/dashboard.html");
+
+/// Writes the dashboard page next to history.js (only when its content changed) and returns it.
+/// The page loads history.js itself, so nothing is regenerated per open.
+pub fn install_dashboard(claude_dir: &Path) -> std::io::Result<PathBuf> {
+    let page = claude_dir.join("statusline").join("dashboard.html");
+    if fs::read(&page).ok().as_deref() != Some(DASHBOARD.as_bytes()) {
+        fs::create_dir_all(claude_dir.join("statusline"))?;
+        let tmp = page.with_extension("tmp");
+        fs::write(&tmp, DASHBOARD)?;
+        fs::rename(&tmp, &page)?;
+    }
+    Ok(page)
+}
+
 pub fn handle_history() {
-    // Embed the dashboard-design files at compile time.
-    // Any UI change in dashboard-design/ is automatically picked up on next build.
-    let template = include_str!("../dashboard-design/dashboard.html");
-    let css      = include_str!("../dashboard-design/styles.css");
-    let js       = include_str!("../dashboard-design/script.js");
-
-    // Most-recent first, cap at 100
-    let records = read_history(&history_path(&session::claude_dir()));
-    let sessions: Vec<&Record> = records.iter().take(100).collect();
-
-    // Serialize the session array to JSON for client-side rendering
-    let sessions_json = serde_json::to_string(&sessions).unwrap_or_else(|_| "[]".to_string());
-
-    // Inline the external CSS/JS links and inject session data.
-    // dashboard.html uses real <link>/<script src> so it opens directly in a browser during development.
-    // At runtime we replace those tags with inlined content to produce a self-contained file.
-    let html = template
-        .replace(r#"<link rel="stylesheet" href="styles.css">"#, &format!("<style>{css}</style>"))
-        .replace("/*INJECT_DATA*/null", &sessions_json)
-        .replace(r#"<script src="script.js"></script>"#, &format!("<script>{js}</script>"));
-
-    let file_path = std::env::temp_dir().join("claude-statusline-dashboard.html");
-    if fs::write(&file_path, &html).is_ok() {
-        if open::that(&file_path).is_ok() {
-            println!("Dashboard opened: {}", file_path.display());
-        } else {
-            println!("Dashboard saved: {}", file_path.display());
-        }
-    } else {
-        eprintln!("Failed to write dashboard HTML file.");
+    match install_dashboard(&session::claude_dir()) {
+        Ok(page) if open::that(&page).is_ok() => println!("Dashboard opened: {}", page.display()),
+        Ok(page) => println!("Dashboard saved: {}", page.display()),
+        Err(err) => eprintln!("Failed to write dashboard: {err}"),
     }
 }
 

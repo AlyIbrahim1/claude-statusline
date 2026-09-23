@@ -163,37 +163,33 @@ function handleHookEnd() {
   });
 }
 
+// Writes the dashboard page next to history.js (only when its content changed) and returns it.
+// The page loads history.js itself, so nothing is regenerated per open.
+function installDashboard(claudeDir) {
+  const source = fs.readFileSync(path.join(__dirname, '../dashboard-design/dashboard.html'));
+  const page = path.join(claudeDir, 'statusline', 'dashboard.html');
+  let current = null;
+  try { current = fs.readFileSync(page); } catch (e) {}
+  if (!current || !current.equals(source)) {
+    fs.mkdirSync(path.dirname(page), { recursive: true });
+    fs.writeFileSync(`${page}.tmp`, source);
+    fs.renameSync(`${page}.tmp`, page);
+  }
+  return page;
+}
+
 async function handleHistory() {
-  const templatePath = path.join(__dirname, '../dashboard-design/dashboard.html');
-  const cssPath      = path.join(__dirname, '../dashboard-design/styles.css');
-  const jsPath       = path.join(__dirname, '../dashboard-design/script.js');
-
-  const template = fs.readFileSync(templatePath, 'utf8');
-  const css      = fs.readFileSync(cssPath,      'utf8');
-  const js       = fs.readFileSync(jsPath,       'utf8');
-
-  // Most-recent first, cap at 100
-  const sessions = readHistory(historyPath(session.claudeDir())).slice(0, 100);
-  const sessionsJson = JSON.stringify(sessions);
-
-  // Inject CSS, JS, and data into the template using the sentinel strings
-  const html = template
-    .replace('/*INJECT_CSS*/', css)
-    .replace('/*INJECT_DATA*/null', sessionsJson)
-    .replace('/*INJECT_JS*/', js);
-
-  const tempPath = path.join(os.tmpdir(), 'claude-statusline-dashboard.html');
-  fs.writeFileSync(tempPath, html);
+  const page = installDashboard(session.claudeDir());
   try {
     const open = require('open');
-    await open.default(tempPath);
-    console.log(`Dashboard opened: ${tempPath}`);
+    await open.default(page);
+    console.log(`Dashboard opened: ${page}`);
   } catch (e) {
-    console.log(`Dashboard saved: ${tempPath}`);
+    console.log(`Dashboard saved: ${page}`);
   }
 }
 
 module.exports = {
   historyPath, formatLine, parseLine, readHistory, recordLine,
-  finalize, sweepStale, migrateLegacy, handleHookEnd, handleHistory,
+  finalize, sweepStale, migrateLegacy, handleHookEnd, installDashboard, handleHistory,
 };

@@ -48,6 +48,7 @@
     "bin/",
     "scripts/",
     "hooks/",
+    "dashboard-design/dashboard.html",
     "README.md"
   ],
   "license": "MIT",

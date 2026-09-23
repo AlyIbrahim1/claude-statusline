@@ -22,7 +22,7 @@
 - **Subscription Awareness:** Intelligent toggling between usage/reset timers (Pro/Max plans) and direct API costs based on user subscription type.
 - **Context Bar Normalization:** Calculates "usable %" by factoring out the 16.5% auto-compact buffer.
 - **Session History:** A SessionEnd hook appends one compact line per session to `~/.claude/statusline/history.js`, using state the statusline keeps in `~/.claude/statusline/sessions/<id>.json` (deleted when the session ends; stale state is finalized after 24h). History tracking is **enabled by default** on setup and can be toggled via `enable-history` / `disable-history` CLI commands.
-- **History Dashboard (Web + Terminal):** Running `claude-statusline history` opens history in the user's saved mode. Web mode generates a self-contained HTML dashboard in the browser with project filtering, summary stats (total sessions, tokens in/out, total spend), light/dark theme toggle, and per-row detail for model, duration, cost, and exit reason. Terminal mode opens an interactive full-screen TUI.
+- **History Dashboard (Web + Terminal):** Running `claude-statusline history` opens history in the user's saved mode. Web mode opens a single stored page, `~/.claude/statusline/dashboard.html`, which loads `history.js` from the same folder and reloads it on focus and every 15s while visible. It shows project filtering, summary stats (sessions, tokens in, cache reads, tokens out, total spend), light/dark theme toggle, and per-row detail for model, duration, cost, and exit reason. Terminal mode opens an interactive full-screen TUI.
 - **Claude Slash Commands:** History management is also available as Claude Code slash commands (`/history`, `/history-enable`, `/history-disable`, `/history-mode <web|terminal>`). Command files are provided in `.claude/commands/` for project contributors and installed to `~/.claude/commands/` on global npm install.
 
 ### 4.2. Developer Ergonomics
@@ -70,7 +70,7 @@
 
 ### 5.3. Capture Dashboard (`capture-dashboard.yml`)
 - **Trigger:** Any push to `main` that modifies files under `dashboard-design/`.
-- **Purpose:** Serves the dashboard locally via `http-server`, launches a headless Chromium browser via a Playwright script, waits for network idle (ensuring `mockData.jsonl` is fetched and rendered), waits for table rows to appear in the DOM, then waits for all CSS animations to complete before taking a full-page screenshot. Commits the result to `assets/dashboard-preview.png` with `[skip ci]` to avoid re-triggering the pipeline.
+- **Purpose:** Serves the dashboard locally via `http-server`, launches a headless Chromium browser via a Playwright script, waits for network idle (ensuring the sample `dashboard-design/history.js` is loaded and rendered), waits for table rows to appear in the DOM, then waits for all CSS animations to complete before taking a full-page screenshot. Commits the result to `assets/dashboard-preview.png` with `[skip ci]` to avoid re-triggering the pipeline.
 
 ## 6. Success Metrics
 - Startup latency ~5ms (Rust binary); < 150ms (Node.js fallback).
