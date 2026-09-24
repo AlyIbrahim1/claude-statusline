@@ -55,7 +55,7 @@ Before committing a version bump, check whether `README.md` needs updating — n
 
 ## Release
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`. It refuses tags that do not match `package.json` or point off `main`, re-runs all of CI on the tagged commit, builds and runs every platform binary, publishes the platform packages, smoke-installs the package from the registry on every platform (`.github/scripts/smoke-install.js`), and only then publishes the root package:
+Pushing a `v*` tag runs `.github/workflows/release.yml`. It refuses tags that do not match `package.json` or point off `main`, re-runs all of CI on the tagged commit, builds and runs every platform binary, publishes the platform packages, smoke-installs the package from the registry on every platform (`.github/scripts/smoke-install.js`), and only then publishes the root package. Publishing uses npm trusted publishing, not a token: each of the six packages trusts `release.yml` in the `npm` environment on npmjs.com, so a new package or a renamed workflow needs that setting too:
 
 ```bash
 git tag v1.x.x && git push origin main --tags
