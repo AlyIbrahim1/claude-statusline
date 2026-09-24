@@ -25,4 +25,4 @@ jobs:
           path-to-signatures: '.github/cla-signatures.json'
           path-to-document: 'https://github.com/AlyIbrahim1/claude-statusline/blob/main/CLA.md'
           branch: 'main'
-          allowlist: 'AlyIbrahim1'
+          allowlist: 'AlyIbrahim1, dependabot[bot]'
